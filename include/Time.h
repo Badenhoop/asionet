@@ -16,7 +16,10 @@ using Clock = std::chrono::steady_clock;
 using TimePoint = Clock::time_point;
 using Duration = Clock::duration;
 
-TimePoint now() noexcept;
+inline TimePoint now() noexcept
+{
+	return std::chrono::steady_clock::now();
+}
 
 }
 }

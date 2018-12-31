@@ -30,11 +30,7 @@ set(SOURCE_FILES
         include/Error.h
         include/Frame.h
         include/Busyable.h
-        include/TimedValue.h
-        src/Timer.cpp
-        src/Time.cpp
-        src/Networking.cpp
-        src/Busyable.cpp)
+        include/TimedValue.h)
 
 ########################
 # Test Executable Target

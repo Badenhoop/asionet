@@ -23,7 +23,8 @@ public:
      * @attention Returning false does not guarantee that a subsequent
      *             BusyLock instantiation with this object won't throw!
      */
-    bool isBusy() const noexcept;
+    bool isBusy() const noexcept
+    { return busy; }
 
 private:
     std::mutex busyMutex;
@@ -34,19 +35,58 @@ private:
 class BusyLock
 {
 public:
-    explicit BusyLock(Busyable & busyable);
+    explicit BusyLock(Busyable & busyable)
+	    : busyable(&busyable)
+    {
+	    // Its undefined behavior to try to lock a mutex while having it acquired already
+	    // so we check the thread's ids for equality.
+	    auto thisThreadId = std::this_thread::get_id();
+	    if (thisThreadId == busyable.busyThreadId.load() ||
+	        !busyable.busyMutex.try_lock())
+		    throw error::Busy{};
 
-    ~BusyLock();
+	    owns = true;
+	    busyable.busy = true;
+	    busyable.busyThreadId = thisThreadId;
+    }
+
+    ~BusyLock()
+    {
+	    if (owns)
+		    unlock();
+    }
 
     BusyLock(const BusyLock &) = delete;
 
     BusyLock & operator=(const BusyLock &) = delete;
 
-    BusyLock(BusyLock && other) noexcept;
+    BusyLock(BusyLock && other) noexcept
+	    : busyable(other.busyable)
+	      , owns(other.owns.load())
+    {
+	    other.busyable = nullptr;
+	    other.owns = false;
+    }
 
-    BusyLock & operator=(BusyLock && other) noexcept;
+    BusyLock & operator=(BusyLock && other) noexcept
+    {
+	    if (owns)
+		    unlock();
 
-    void unlock();
+	    busyable = other.busyable;
+	    owns = other.owns.load();
+
+	    other.busyable = nullptr;
+	    other.owns = false;
+    }
+
+    void unlock()
+    {
+	    busyable->busy = false;
+	    busyable->busyThreadId = std::thread::id{};
+	    busyable->busyMutex.unlock();
+	    owns = false;
+    }
 
 protected:
     Busyable * busyable{nullptr};
