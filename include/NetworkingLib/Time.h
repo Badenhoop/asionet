@@ -1,0 +1,24 @@
+//
+// Created by philipp on 30.12.17.
+//
+
+#ifndef NETWORKINGLIB_TIME_H
+#define NETWORKINGLIB_TIME_H
+
+#include <chrono>
+
+namespace networking
+{
+namespace time
+{
+
+using Clock = std::chrono::steady_clock;
+using TimePoint = Clock::time_point;
+using Duration = Clock::duration;
+
+TimePoint now() noexcept;
+
+}
+}
+
+#endif //NETWORKINGLIB_TIME_H

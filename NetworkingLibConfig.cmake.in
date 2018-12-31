@@ -1,0 +1,12 @@
+# - Config file for the NetworkingLib package
+# It defines the following variable
+#  NetworkingLib_INCLUDE_DIRS - include directories for NetworkingLib
+
+# Compute paths
+get_filename_component(NETWORKINGLIB_CMAKE_DIR "${CMAKE_CURRENT_LIST_FILE}" PATH)
+set(NetworkingLib_INCLUDE_DIRS "@CONF_INCLUDE_DIRS@")
+
+# Our library dependencies (contains definitions for IMPORTED targets)
+if(NOT TARGET NetworkingLib)
+    include("${NETWORKINGLIB_CMAKE_DIR}/NetworkingLibTargets.cmake")
+endif()
