@@ -75,14 +75,14 @@ namespace message
 template<>
 struct Encoder<asionet::test::NonCopyableMessage>
 {
-    void operator()(const asionet::test::NonCopyableMessage & message, std::string & data) const
+    std::shared_ptr<std::string> operator()(const asionet::test::NonCopyableMessage & message) const
     {}
 };
 
 template<>
 struct Decoder<asionet::test::NonCopyableMessage>
 {
-    void operator()(asionet::test::NonCopyableMessage & message, const std::string & data) const
+    std::shared_ptr<asionet::test::NonCopyableMessage> operator()(const std::string & data) const
     {}
 };
 

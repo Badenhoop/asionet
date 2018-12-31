@@ -30,7 +30,7 @@ public:
 
     using ReceiveHandler = std::function<
         void(const error::ErrorCode & error,
-             Message & message,
+             const std::shared_ptr<Message> & message,
              const std::string & host,
              std::uint16_t port)>;
 
@@ -46,11 +46,11 @@ public:
           , buffer(maxMessageSize + Frame::HEADER_SIZE)
     {}
 
-    void receive(Message & message, std::string & host, std::uint16_t & port, const time::Duration & timeout)
+    std::shared_ptr<Message> receive(std::string & host, std::uint16_t & port, const time::Duration & timeout)
     {
         BusyLock busyLock{*this};
         setupSocket();
-        message::receiveDatagram<Message>(net, socket, buffer, message, host, port, timeout);
+        return message::receiveDatagram<Message>(net, socket, buffer, host, port, timeout);
     }
 
     void asyncReceive(const time::Duration & timeout, const ReceiveHandler & handler)
@@ -63,9 +63,9 @@ public:
         message::asyncReceiveDatagram<Message>(
             net, socket, buffer, timeout,
             [state](const auto & error,
-                    auto & message,
-                    const std::string & senderHost,
-                    std::uint16_t senderPort)
+                    const auto & message,
+                    const auto & senderHost,
+                    auto senderPort)
             {
                 state->busyLock.unlock();
                 state->handler(error, message, senderHost, senderPort);

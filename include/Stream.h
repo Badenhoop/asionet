@@ -56,18 +56,18 @@ void write(Networking & net,
 template<typename SyncWriteStream>
 void asyncWrite(Networking & net,
                 SyncWriteStream & stream,
-                const std::string & writeData,
+                std::shared_ptr<std::string> writeData,
                 const time::Duration & timeout,
                 const WriteHandler & handler)
 {
     using namespace asionet::internal;
-    auto frame = std::make_shared<Frame>((const std::uint8_t *) writeData.c_str(), writeData.size());
+    auto frame = std::make_shared<Frame>((const std::uint8_t *) writeData->c_str(), writeData->size());
 
     auto asyncOperation = [](auto && ... args) { boost::asio::async_write(std::forward<decltype(args)>(args)...); };
 
     closeable::timedAsyncOperation(
         net, asyncOperation, stream, timeout,
-        [handler, frame](const auto & networkingError, const auto & boostError, auto numBytesTransferred)
+        [handler, frame, writeData](const auto & networkingError, const auto & boostError, auto numBytesTransferred)
         {
             if (numBytesTransferred < frame->getSize())
             {

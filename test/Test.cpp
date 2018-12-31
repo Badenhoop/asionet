@@ -30,12 +30,12 @@ void testSyncServices()
     auto server = service::Server<PlatoonService>::create(net1, 10001);
 
     server->advertiseService(
-        [](const auto & clientEndpoint, auto & requestMessage, auto & responseMessage)
+        [](const auto & clientEndpoint, const auto & requestMessage, auto & responseMessage)
         {
             std::cout << "Request from "
-                      << (int) requestMessage.getVehicleId()
+                      << (int) requestMessage->getVehicleId()
                       << " with type: "
-                      << (int) requestMessage.getMessageType()
+                      << (int) requestMessage->getMessageType()
                       << "\n";
             responseMessage = PlatoonMessage::acceptResponse(1, 42);
         });
@@ -47,12 +47,11 @@ void testSyncServices()
     auto client = service::Client<PlatoonService>::create(net2);
     for (int i = 0; i < 5; i++)
     {
-        PlatoonMessage response;
-        client->call(PlatoonMessage::followerRequest(2), response, "127.0.0.1", 10001, 1s);
-        std::cout << "Response from " << (int) response.getVehicleId() << " with type: "
-                  << (int) response.getMessageType()
-                  << " and platoonId: " << (int) response.getPlatoonId() << "\n";
-        if (response.getVehicleId() == 1 && response.getPlatoonId() == 42)
+        auto response = client->call(PlatoonMessage::followerRequest(2), "127.0.0.1", 10001, 1s);
+        std::cout << "Response from " << (int) response->getVehicleId() << " with type: "
+                  << (int) response->getMessageType()
+                  << " and platoonId: " << (int) response->getPlatoonId() << "\n";
+        if (response->getVehicleId() == 1 && response->getPlatoonId() == 42)
             correct++;
     }
 
@@ -68,12 +67,12 @@ void testAsyncServices()
     auto server = service::Server<PlatoonService>::create(net, 10001);
 
     server->advertiseService(
-        [](const auto & clientEndpoint, auto & requestMessage, auto & responseMessage)
+        [](const auto & clientEndpoint, const auto & requestMessage, auto & responseMessage)
         {
             std::cout << "Request from "
-                      << (int) requestMessage.getVehicleId()
+                      << (int) requestMessage->getVehicleId()
                       << " with type: "
-                      << (int) requestMessage.getMessageType()
+                      << (int) requestMessage->getMessageType()
                       << "\n";
             responseMessage = PlatoonMessage::acceptResponse(1, 42);
         });
@@ -88,16 +87,16 @@ void testAsyncServices()
     {
         client->asyncCall(
             PlatoonMessage::followerRequest(2), "127.0.0.1", 10001, 1s,
-            [&pending, &correct](const auto & error, auto & response)
+            [&pending, &correct](const auto & error, const auto & response)
             {
                 if (error)
                     std::cout << "FAILED!\n";
                 else
                 {
-                    std::cout << "Response from " << (int) response.getVehicleId() << " with type: "
-                              << (int) response.getMessageType()
-                              << " and platoonId: " << (int) response.getPlatoonId() << "\n";
-                    if (response.getVehicleId() == 1 && response.getPlatoonId() == 42)
+                    std::cout << "Response from " << (int) response->getVehicleId() << " with type: "
+                              << (int) response->getMessageType()
+                              << " and platoonId: " << (int) response->getPlatoonId() << "\n";
+                    if (response->getVehicleId() == 1 && response->getPlatoonId() == 42)
                         correct++;
                 }
 
@@ -123,7 +122,7 @@ void testTcpClientTimeout()
     auto server = service::Server<PlatoonService>::create(net1, 10001);
 
     server->advertiseService(
-        [](const auto & clientEndpoint, auto & requestMessage, auto & responseMessage)
+        [](const auto & clientEndpoint, const auto & requestMessage, auto & responseMessage)
         {
             // Just sleep for 5 seconds.
             sleep(5);
@@ -136,9 +135,8 @@ void testTcpClientTimeout()
     auto startTime = boost::posix_time::microsec_clock::local_time();
     try
     {
-        PlatoonMessage response;
-        client->call(PlatoonMessage::followerRequest(2), response, "127.0.0.1", 10001, timeout);
-        std::cout << "Response: " << response.getPlatoonId() << "\n";
+        auto response = client->call(PlatoonMessage::followerRequest(2), "127.0.0.1", 10001, timeout);
+        std::cout << "Response: " << response->getPlatoonId() << "\n";
         std::cout << "FAILED!";
     }
     catch (const error::Aborted & e)
@@ -161,12 +159,12 @@ void testMultipleConnections()
     auto server2 = service::Server<PlatoonService>::create(net2, 10002);
 
     server1->advertiseService(
-        [](const auto & clientEndpoint, auto & requestMessage, auto & responseMessage)
+        [](const auto & clientEndpoint, const auto & requestMessage, auto & responseMessage)
         {
             responseMessage = PlatoonMessage::acceptResponse(1, 42);
         });
     server2->advertiseService(
-        [](const auto & clientEndpoint, auto & requestMessage, auto & responseMessage)
+        [](const auto & clientEndpoint, const auto & requestMessage, auto & responseMessage)
         {
             responseMessage = PlatoonMessage::acceptResponse(2, 43);
         });
@@ -175,16 +173,14 @@ void testMultipleConnections()
 
     auto client = service::Client<PlatoonService>::create(net3);
 
-    PlatoonMessage response1, response2;
+    auto response1 = client->call(PlatoonMessage::followerRequest(1), "127.0.0.1", 10001, 5s);
+    std::cout << "Response from " << response1->getVehicleId() << std::endl;
 
-    client->call(PlatoonMessage::followerRequest(1), response1, "127.0.0.1", 10001, 5s);
-    std::cout << "Response from " << response1.getVehicleId() << std::endl;
+    auto response2 = client->call(PlatoonMessage::followerRequest(2), "127.0.0.1", 10002, 5s);
+    std::cout << "Response from " << response2->getVehicleId() << std::endl;
 
-    client->call(PlatoonMessage::followerRequest(2), response2, "127.0.0.1", 10002, 5s);
-    std::cout << "Response from " << response2.getVehicleId() << std::endl;
-
-    if (response1.getVehicleId() == 1 && response1.getPlatoonId() == 42 &&
-        response2.getVehicleId() == 2 && response2.getPlatoonId() == 43)
+    if (response1->getVehicleId() == 1 && response1->getPlatoonId() == 42 &&
+        response2->getVehicleId() == 2 && response2->getPlatoonId() == 43)
         std::cout << "SUCCESS!\n";
 }
 
@@ -196,7 +192,7 @@ void testStoppingServiceServer()
 
     auto server = service::Server<PlatoonService>::create(net1, 10001);
 
-    auto handler = [](const auto & clientEndpoint, auto & requestMessage, auto & responseMessage)
+    auto handler = [](const auto & clientEndpoint, const auto & requestMessage, auto & responseMessage)
     {
         // Just sleep for 3 seconds.
         sleep(2);
@@ -210,17 +206,15 @@ void testStoppingServiceServer()
     auto client = service::Client<PlatoonService>::create(net2);
     try
     {
-        PlatoonMessage response;
-        client->call(PlatoonMessage::followerRequest(42), response, "127.0.0.1", 10001, 1s);
+        auto response = client->call(PlatoonMessage::followerRequest(42), "127.0.0.1", 10001, 1s);
     }
     catch (const error::Aborted & e)
     {
         server->stop();
         net1.waitWhileBusy(*server);
         server->advertiseService(handler);
-        PlatoonMessage response;
-        client->call(PlatoonMessage::followerRequest(42), response, "127.0.0.1", 10001, 5s);
-        if (response.getMessageType() == messageTypes::ACCEPT_RESPONSE)
+        auto response = client->call(PlatoonMessage::followerRequest(42), "127.0.0.1", 10001, 5s);
+        if (response->getMessageType() == messageTypes::ACCEPT_RESPONSE)
             std::cout << "SUCCESS!\n";
     }
 }
@@ -240,8 +234,8 @@ void testAsyncDatagramReceiver()
         3s,
         [&running](const auto & error, auto & message, const auto & senderHost, auto senderPort)
         {
-            if (!error && message.getVehicleId() == 42)
-                std::cout << "SUCCESS! Received message from: " << message.getVehicleId() << "\n";
+            if (!error && message->getVehicleId() == 42)
+                std::cout << "SUCCESS! Received message from: " << message->getVehicleId() << "\n";
             else
                 std::cout << "FAILED!\n";
 
@@ -296,7 +290,7 @@ void testServiceClientAsyncCallTimeout()
     auto server = service::Server<PlatoonService>::create(net1, 10001);
 
     server->advertiseService(
-        [](const auto & clientEndpoint, auto & requestMessage, auto & responseMessage)
+        [](const auto & clientEndpoint, const auto & requestMessage, auto & responseMessage)
         {
             sleep(3);
             responseMessage = PlatoonMessage::acceptResponse(1, 42);
@@ -343,7 +337,7 @@ void testDatagramSenderAsyncSend()
             }
 
             std::cout << "Sender host: " << senderHost << "\nSender Port: " << senderPort << "\n";
-            if (message.getPlatoonId() == 42)
+            if (message->getPlatoonId() == 42)
                 std::cout << "SUCCESS!\n";
 
             running = false;
@@ -410,12 +404,11 @@ void testStringMessageOverDatagram()
     std::thread receiverThread{
         [receiver, &running]
         {
-            std::string message;
             std::string host;
             std::uint16_t port;
-            receiver->receive(message, host, port, 3s);
+            auto message = receiver->receive(host, port, 3s);
             std::cout << "received: host: " << host << " port: " << port << " message: " << message << "\n";
-            if (message == "Hello World!")
+            if (*message == "Hello World!")
                 std::cout << "SUCCESS!\n";
 
             running = false;
@@ -444,10 +437,10 @@ void testStringMessageOverService()
         [server, &running, &failed]
         {
             server->advertiseService(
-                [&running, &failed](const auto & endpoint, auto & request, auto & response)
+                [&running, &failed](const auto & endpoint, const auto & request, auto & response)
                 {
                     std::cout << "Received request message: " << request << "\n";
-                    if (request != "Ping")
+                    if (*request != "Ping")
                         failed = true;
                     running = false;
                     response = std::string{"Pong"};
@@ -456,10 +449,9 @@ void testStringMessageOverService()
 
     sleep(1);
 
-    std::string response;
-    client->call(std::string{"Ping"}, response, "127.0.0.1", 10000, 3s);
+    auto response = client->call(std::string{"Ping"}, "127.0.0.1", 10000, 3s);
     std::cout << "Received response message: " << response << "\n";
-    if (response != "Pong")
+    if (*response != "Pong")
         failed = true;
 
     if (!failed)
@@ -487,8 +479,7 @@ void testServiceServerMaxMessageSize()
     auto client = service::Client<StringService>::create(net, 200);
     try
     {
-        std::string response;
-        client->call(std::string(200, 'a'), response, "127.0.0.1", 10000, 1s);
+        auto response = client->call(std::string(200, 'a'), "127.0.0.1", 10000, 1s);
     }
     catch (const error::Error &)
     {
@@ -497,7 +488,7 @@ void testServiceServerMaxMessageSize()
 
     client->asyncCall(
         std::string(200, 'a'), "127.0.0.1", 10000, 1s,
-        [&syncCallError, &running](const auto & error, auto & message)
+        [&syncCallError, &running](const auto & error, const auto & message)
         {
             if (error == error::codes::FAILED_OPERATION && syncCallError)
                 std::cout << "SUCCESS!\n";
@@ -518,7 +509,7 @@ void testServiceClientMaxMessageSize()
 
     auto server = service::Server<StringService>::create(net, 10000, 200);
     server->advertiseService(
-        [&serverReceivedCount](const auto & endpoint, auto & request, auto & response)
+        [&serverReceivedCount](const auto & endpoint, const auto & request, auto & response)
         {
             serverReceivedCount++;
             response = std::string(200, 'a');
@@ -528,8 +519,7 @@ void testServiceClientMaxMessageSize()
     auto client = service::Client<StringService>::create(net, 100);
     try
     {
-        std::string response;
-        client->call(std::string{}, response, "127.0.0.1", 10000, 1s);
+        auto response = client->call(std::string{}, "127.0.0.1", 10000, 1s);
     }
     catch (const error::Error &)
     {
@@ -538,7 +528,7 @@ void testServiceClientMaxMessageSize()
 
     client->asyncCall(
         std::string(100, 'a'), "127.0.0.1", 10000, 1s,
-        [&syncCallError, &running, &serverReceivedCount](const auto & error, auto & message)
+        [&syncCallError, &running, &serverReceivedCount](const auto & error, const auto & message)
         {
             if (error == error::codes::FAILED_OPERATION && syncCallError && serverReceivedCount == 2)
                 std::cout << "SUCCESS!\n";
@@ -561,18 +551,18 @@ void testServiceLargeTransferSize()
     auto client = service::Client<StringService>::create(net, transferSize);
 
     server->advertiseService(
-        [&](const auto & endpoint, auto & request, auto & response)
+        [&](const auto & endpoint, const auto & request, auto & response)
         {
-            if (request != data)
+            if (*request != data)
                 success = false;
             response = data;
         });
 
     client->asyncCall(
         data, "127.0.0.1", 10000, 10s,
-        [&](const auto & error, auto & message)
+        [&](const auto & error, const auto & message)
         {
-            if (error || message != data)
+            if (error || *message != data)
                 success = false;
             running = false;
         });
@@ -614,10 +604,9 @@ void testDatagramReceiverMaxMessageSize()
         {
             try
             {
-                std::string message;
                 std::string host;
                 std::uint16_t port;
-                receiver->receive(message, host, port, 3s);
+                auto message = receiver->receive(host, port, 3s);
             }
             catch (const error::Error &)
             {
@@ -645,10 +634,9 @@ void testNonCopyableMessage()
         auto sender = message::DatagramSender<NonCopyableMessage>::create(net);
         auto receiver = message::DatagramReceiver<NonCopyableMessage>::create(net, 10000);
         sender->send(NonCopyableMessage{}, "127.0.0.1", 10000, 0s);
-        NonCopyableMessage message;
         std::string host;
         std::uint16_t port;
-        receiver->receive(message, host, port, 0s);
+        auto message = receiver->receive(host, port, 0s);
     }
     catch (...)
     {}

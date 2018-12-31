@@ -157,7 +157,7 @@ void sendTo(Networking & net,
 template<typename DatagramSocket>
 void asyncSendTo(Networking & net,
                  DatagramSocket & socket,
-                 const std::string & sendData,
+                 std::shared_ptr<std::string> sendData,
                  const std::string & host,
                  std::uint16_t port,
                  const time::Duration & timeout,
@@ -167,14 +167,14 @@ void asyncSendTo(Networking & net,
     udp::endpoint endpoint{address::from_string(host), port};
 
     using namespace asionet::internal;
-    auto buffer = std::make_shared<Frame>((const std::uint8_t *) sendData.c_str(), sendData.size());
+    auto buffer = std::make_shared<Frame>((const std::uint8_t *) sendData->c_str(), sendData->size());
 
     auto asyncOperation = [&socket](auto && ... args)
     { socket.async_send_to(std::forward<decltype(args)>(args)...); };
 
     closeable::timedAsyncOperation(
         net, asyncOperation, socket, timeout,
-        [handler, buffer](const auto & networkingError,
+        [handler, buffer, sendData](const auto & networkingError,
                           const auto & boostError,
                           auto numBytesTransferred)
         {

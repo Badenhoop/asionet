@@ -4,11 +4,8 @@ An easy-to-use C++ network library based on boost asio.
 ## TODO
 
 ### misc
+- remove TimedValue
 - generate single header file
-- remove config files 
-
-### refactoring
-- encoder, decoder -> Serializer, Deserializer
 
 ### implementation
 - pass messages in handlers via std::shared_ptr

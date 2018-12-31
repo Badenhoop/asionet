@@ -27,8 +27,7 @@ constexpr MessageType REJECT_RESPONSE = 0x04;
 class PlatoonMessage
 {
 public:
-    PlatoonMessage()
-    {}
+    PlatoonMessage() = default;
 
     PlatoonMessage(VehicleId vehicleId, MessageType messageType, PlatoonId platoonId)
         : vehicleId(vehicleId)
@@ -73,11 +72,11 @@ namespace message
 template<>
 struct Encoder<protocol::PlatoonMessage>
 {
-    void operator()(const protocol::PlatoonMessage & message, std::string & data) const
+    std::shared_ptr<std::string> operator()(const protocol::PlatoonMessage & message) const
     {
         using namespace protocol;
 
-        data = std::string(9, '\0');
+        auto data = std::string(9, '\0');
 
         auto vehicleId = message.getVehicleId();
         auto messageType = message.getMessageType();
@@ -92,13 +91,15 @@ struct Encoder<protocol::PlatoonMessage>
         data[6] = (std::uint8_t) ((platoonId & 0x0000ff00) >> 8);
         data[7] = (std::uint8_t) ((platoonId & 0x00ff0000) >> 16);
         data[8] = (std::uint8_t) ((platoonId & 0xff000000) >> 24);
+
+        return std::make_shared<std::string>(data);
     }
 };
 
 template<>
 struct Decoder<protocol::PlatoonMessage>
 {
-    void operator()(protocol::PlatoonMessage & message, const std::string & data) const
+    std::shared_ptr<protocol::PlatoonMessage> operator()(const std::string & data) const
     {
         using namespace protocol;
 
@@ -118,7 +119,7 @@ struct Decoder<protocol::PlatoonMessage>
         platoonId += ((PlatoonId) data[7]) << 16;
         platoonId += ((PlatoonId) data[8]) << 24;
 
-        message = PlatoonMessage(vehicleId, messageType, platoonId);
+        return std::make_shared<PlatoonMessage>(vehicleId, messageType, platoonId);
     }
 };
 

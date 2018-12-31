@@ -13,6 +13,10 @@ namespace asionet
 namespace service
 {
 
+/**
+ * Note that Service::ResponseMessage has to be default-constructable.
+ * @tparam Service
+ */
 template<typename Service>
 class Server : public std::enable_shared_from_this<Server<Service>>
                , public Busyable
@@ -29,7 +33,7 @@ public:
     using Ptr = std::shared_ptr<Server<Service>>;
     using Endpoint = Resolver::Endpoint;
     using RequestReceivedHandler = std::function<void(const Endpoint & clientEndpoint,
-                                                      RequestMessage & requestMessage,
+                                                      const std::shared_ptr<RequestMessage> & requestMessage,
                                                       ResponseMessage & response)>;
 
     static Ptr create(Networking & net, uint16_t bindingPort, std::size_t maxMessageSize = 512)
@@ -129,7 +133,7 @@ private:
 
                     asionet::message::asyncReceive<RequestMessage>(
                         handleRequestState->self->net, handleRequestState->socket, handleRequestState->buffer, 10s,
-                        [handleRequestState](const auto & errorCode, auto & request)
+                        [handleRequestState](const auto & errorCode, const auto & request)
                         {
                             // If a receive has timed out we treat it like we've never
                             // received any message (and therefor we do not call the handler).
