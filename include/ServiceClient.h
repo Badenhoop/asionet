@@ -16,7 +16,7 @@
 #include "Error.h"
 #include "Busyable.h"
 
-namespace networking
+namespace asionet
 {
 namespace service
 {
@@ -65,7 +65,7 @@ public:
         auto startTime = time::now();
         newSocket();
         // Connect to server.
-        networking::socket::connect(net, socket, host, port, timeout);
+        asionet::socket::connect(net, socket, host, port, timeout);
         updateTimeout(timeout, startTime);
         // Send the request.
         message::send(net, socket, request, timeout);
@@ -90,7 +90,7 @@ public:
         newSocket();
 
         // Connect to server.
-        networking::socket::asyncConnect(
+        asionet::socket::asyncConnect(
             net, socket, host, port, state->timeout,
             [state, request](const auto & error)
             {
@@ -104,7 +104,7 @@ public:
                 Client<Service>::updateTimeout(state->timeout, state->startTime);
 
                 // Send the request.
-                networking::message::asyncSend(
+                asionet::message::asyncSend(
                     state->self->net, state->self->socket, request, state->timeout,
                     [state](const auto & error)
                     {
@@ -118,7 +118,7 @@ public:
                         Client<Service>::updateTimeout(state->timeout, state->startTime);
 
                         // Receive the response.
-                        networking::message::asyncReceive<ResponseMessage>(
+                        asionet::message::asyncReceive<ResponseMessage>(
                             state->self->net, state->self->socket, state->buffer, state->timeout,
                             [state](auto const & error, auto & response)
                             {
@@ -140,7 +140,7 @@ public:
 
 private:
     using Socket = boost::asio::ip::tcp::socket;
-    using Frame = networking::internal::Frame;
+    using Frame = asionet::internal::Frame;
 
     // We must keep track of some variables during the async handler chain.
     struct AsyncState
@@ -167,7 +167,7 @@ private:
         closeable::Closer<Socket> closer;
     };
 
-    networking::Networking & net;
+    asionet::Networking & net;
     Socket socket;
     std::size_t maxMessageSize;
 

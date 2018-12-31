@@ -11,7 +11,7 @@
 #include "Time.h"
 #include "Busyable.h"
 
-namespace networking
+namespace asionet
 {
 namespace time
 {

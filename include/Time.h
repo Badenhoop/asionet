@@ -7,7 +7,7 @@
 
 #include <chrono>
 
-namespace networking
+namespace asionet
 {
 namespace time
 {

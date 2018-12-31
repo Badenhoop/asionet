@@ -7,7 +7,7 @@
 
 #include <functional>
 
-namespace networking
+namespace asionet
 {
 namespace utils
 {

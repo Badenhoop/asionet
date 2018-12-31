@@ -15,7 +15,7 @@
 #include "Socket.h"
 #include <boost/algorithm/string/replace.hpp>
 
-namespace networking
+namespace asionet
 {
 namespace message
 {
@@ -96,7 +96,7 @@ void send(Networking & net,
     std::string data;
     if (!internal::encode(message, data))
         throw error::Encoding{};
-    networking::stream::write(net, stream, data, timeout);
+    asionet::stream::write(net, stream, data, timeout);
 };
 
 template<typename Message, typename SyncWriteStream>
@@ -115,7 +115,7 @@ void asyncSend(Networking & net,
         return;
     }
 
-    networking::stream::asyncWrite(
+    asionet::stream::asyncWrite(
         net, stream, *data, timeout,
         [handler, data](const auto & errorCode)
         { handler(errorCode); });
@@ -128,7 +128,7 @@ void receive(Networking & net,
              Message & message,
              const time::Duration & timeout)
 {
-    auto data = networking::stream::read(net, stream, buffer, timeout);
+    auto data = asionet::stream::read(net, stream, buffer, timeout);
     if (!internal::decode(data, message))
         throw error::Decoding{};
 };
@@ -140,7 +140,7 @@ void asyncReceive(Networking & net,
                   const time::Duration & timeout,
                   const ReceiveHandler<Message> & handler)
 {
-    networking::stream::asyncRead(
+    asionet::stream::asyncRead(
         net, stream, buffer, timeout,
         [handler](const auto & errorCode, auto & data)
         {
@@ -165,7 +165,7 @@ void sendDatagram(Networking & net,
     std::string data{};
     if (!internal::encode(message, data))
         throw error::Encoding{};
-    networking::socket::sendTo(net, socket, data, host, port, timeout);
+    asionet::socket::sendTo(net, socket, data, host, port, timeout);
 }
 
 template<typename Message, typename DatagramSocket>
@@ -186,7 +186,7 @@ void asyncSendDatagram(Networking & net,
         return;
     }
 
-    networking::socket::asyncSendTo(
+    asionet::socket::asyncSendTo(
         net, socket, *data, host, port, timeout,
         [handler, data](const auto & error)
         { handler(error); });
@@ -201,7 +201,7 @@ void receiveDatagram(Networking & net,
                      std::uint16_t & port,
                      const time::Duration & timeout)
 {
-    auto data = networking::socket::receiveFrom(net, socket, buffer, host, port, timeout);
+    auto data = asionet::socket::receiveFrom(net, socket, buffer, host, port, timeout);
     if (!internal::decode(data, message))
         throw error::Decoding{};
 }
@@ -213,7 +213,7 @@ void asyncReceiveDatagram(Networking & net,
                           const time::Duration & timeout,
                           const ReceiveFromHandler<Message> & handler)
 {
-    networking::socket::asyncReceiveFrom(
+    asionet::socket::asyncReceiveFrom(
         net, socket, buffer, timeout,
         [handler](auto error, auto & data, const auto & senderHost, auto senderPort)
         {

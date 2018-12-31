@@ -9,7 +9,7 @@
 #include <boost/asio/buffer.hpp>
 #include "Utils.h"
 
-namespace networking
+namespace asionet
 {
 namespace internal
 {

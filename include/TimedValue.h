@@ -8,7 +8,7 @@
 #include "Time.h"
 #include <mutex>
 
-namespace networking
+namespace asionet
 {
 namespace time
 {
@@ -17,7 +17,7 @@ template<typename T>
 class TimedValue
 {
 public:
-    using Timestamp = networking::time::TimePoint;
+    using Timestamp = asionet::time::TimePoint;
 
     TimedValue()
         : timestamp(Timestamp::min())
@@ -36,7 +36,7 @@ public:
     }
 
     void set(const T & val)
-    { set(val, networking::time::now()); }
+    { set(val, asionet::time::now()); }
 
     void set(const TimedValue & val)
     { set(val.get(), val.getTimestamp()); }
@@ -62,7 +62,7 @@ template<typename T>
 class TimedAtomicValue
 {
 public:
-    using Timestamp = networking::time::TimePoint;
+    using Timestamp = asionet::time::TimePoint;
 
     TimedAtomicValue()
         : timestamp(Timestamp::min())
@@ -85,7 +85,7 @@ public:
     }
 
     void set(const T & val)
-    { set(val, networking::time::now()); }
+    { set(val, asionet::time::now()); }
 
     void set(const TimedValue<T> & val)
     { set(val.get(), val.getTimestamp()); }

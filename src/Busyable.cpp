@@ -2,9 +2,9 @@
 // Created by philipp on 21.01.18.
 //
 
-#include "../include/NetworkingLib/Busyable.h"
+#include "../include/Busyable.h"
 
-namespace networking
+namespace asionet
 {
 
 bool Busyable::isBusy() const noexcept

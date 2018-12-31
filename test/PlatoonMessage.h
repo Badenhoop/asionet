@@ -7,7 +7,7 @@
 
 #include <cstdint>
 #include <vector>
-#include "../include/NetworkingLib/Message.h"
+#include "../include/Message.h"
 
 namespace protocol
 {
@@ -65,7 +65,7 @@ private:
 
 }
 
-namespace networking
+namespace asionet
 {
 namespace message
 {

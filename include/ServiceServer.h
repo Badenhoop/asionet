@@ -8,7 +8,7 @@
 #include "Message.h"
 #include "Networking.h"
 
-namespace networking
+namespace asionet
 {
 namespace service
 {
@@ -66,7 +66,7 @@ private:
     using Tcp = boost::asio::ip::tcp;
     using Socket = Tcp::socket;
     using Acceptor = Tcp::acceptor;
-    using Frame = networking::internal::Frame;
+    using Frame = asionet::internal::Frame;
 
     struct AdvertiseState
     {
@@ -127,7 +127,7 @@ private:
                 {
                     using namespace std::chrono_literals;
 
-                    networking::message::asyncReceive<RequestMessage>(
+                    asionet::message::asyncReceive<RequestMessage>(
                         handleRequestState->self->net, handleRequestState->socket, handleRequestState->buffer, 10s,
                         [handleRequestState](const auto & errorCode, auto & request)
                         {
@@ -141,7 +141,7 @@ private:
                             ResponseMessage response;
                             handleRequestState->requestReceivedHandler(clientEndpoint, request, response);
 
-                            networking::message::asyncSend(
+                            asionet::message::asyncSend(
                                 handleRequestState->self->net, handleRequestState->socket, response, 5s,
                                 [handleRequestState](const auto & errorCode)
                                 {

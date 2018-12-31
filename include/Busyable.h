@@ -10,7 +10,7 @@
 #include <thread>
 #include "Error.h"
 
-namespace networking
+namespace asionet
 {
 
 class Busyable

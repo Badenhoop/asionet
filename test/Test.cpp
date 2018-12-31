@@ -6,17 +6,17 @@
 #include "TestUtils.h"
 #include <boost/asio/ip/tcp.hpp>
 #include <iostream>
-#include "../include/NetworkingLib/ServiceServer.h"
+#include "../include/ServiceServer.h"
 #include "PlatoonService.h"
-#include "../include/NetworkingLib/ServiceClient.h"
-#include "../include/NetworkingLib/DatagramReceiver.h"
-#include "../include/NetworkingLib/DatagramSender.h"
+#include "../include/ServiceClient.h"
+#include "../include/DatagramReceiver.h"
+#include "../include/DatagramSender.h"
 
 using boost::asio::ip::tcp;
 
 using namespace std::chrono_literals;
 
-namespace networking
+namespace asionet
 {
 namespace test
 {

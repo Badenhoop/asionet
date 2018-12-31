@@ -10,7 +10,7 @@
 #include "Message.h"
 #include "Utils.h"
 
-namespace networking
+namespace asionet
 {
 namespace message
 {
@@ -47,7 +47,7 @@ public:
     {
         BusyLock busyLock{*this};
         setupSocket();
-        networking::message::sendDatagram(net, socket, message, ip, port, timeout);
+        asionet::message::sendDatagram(net, socket, message, ip, port, timeout);
     }
 
     void asyncSend(const Message & message,
@@ -60,7 +60,7 @@ public:
         auto state = std::make_shared<AsyncState>(self, handler);
         setupSocket();
 
-        networking::message::asyncSendDatagram(
+        asionet::message::asyncSendDatagram(
             net, socket, message, ip, port, timeout,
             [state](const auto & error)
             {

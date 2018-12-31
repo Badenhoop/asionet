@@ -9,7 +9,7 @@
 #include <boost/system/error_code.hpp>
 #include <boost/asio/error.hpp>
 
-namespace networking
+namespace asionet
 {
 namespace error
 {

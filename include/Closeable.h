@@ -9,7 +9,7 @@
 #include "Timer.h"
 #include "Error.h"
 
-namespace networking
+namespace asionet
 {
 namespace closeable
 {

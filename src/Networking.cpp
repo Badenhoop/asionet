@@ -2,9 +2,9 @@
 // Created by philipp on 15.12.17.
 //
 
-#include "../include/NetworkingLib/Networking.h"
+#include "../include/Networking.h"
 
-namespace networking
+namespace asionet
 {
 
 Networking::Networking()

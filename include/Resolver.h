@@ -12,7 +12,7 @@
 #include "Utils.h"
 #include "Busyable.h"
 
-namespace networking
+namespace asionet
 {
 
 namespace internal

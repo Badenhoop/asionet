@@ -9,7 +9,7 @@
 #include "Resolver.h"
 #include "Frame.h"
 
-namespace networking
+namespace asionet
 {
 namespace socket
 {
@@ -49,7 +49,7 @@ void connect(Networking & net,
              std::uint16_t port,
              time::Duration timeout)
 {
-    using namespace networking::internal;
+    using namespace asionet::internal;
     using Resolver = CloseableResolver<boost::asio::ip::tcp>;
 
     auto startTime = time::now();
@@ -87,7 +87,7 @@ void asyncConnect(Networking & net,
                   const time::Duration & timeout,
                   const ConnectHandler & handler)
 {
-    using namespace networking::internal;
+    using namespace asionet::internal;
     using Resolver = CloseableResolver<boost::asio::ip::tcp>;
 
     auto startTime = time::now();
@@ -139,7 +139,7 @@ void sendTo(Networking & net,
     using namespace boost::asio::ip;
     udp::endpoint endpoint{address::from_string(host), port};
 
-    using namespace networking::internal;
+    using namespace asionet::internal;
     Frame buffer{(const std::uint8_t *) sendData.c_str(), (std::uint32_t) sendData.size()};
 
     auto asyncOperation = [&socket](auto && ... args)
@@ -166,7 +166,7 @@ void asyncSendTo(Networking & net,
     using namespace boost::asio::ip;
     udp::endpoint endpoint{address::from_string(host), port};
 
-    using namespace networking::internal;
+    using namespace asionet::internal;
     auto buffer = std::make_shared<Frame>((const std::uint8_t *) sendData.c_str(), sendData.size());
 
     auto asyncOperation = [&socket](auto && ... args)

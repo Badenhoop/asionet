@@ -6,9 +6,9 @@
 #define PROTOCOL_NETWORKTEST_H_H
 
 #include <string>
-#include "../include/NetworkingLib/Message.h"
+#include "../include/Message.h"
 
-namespace networking
+namespace asionet
 {
 namespace test
 {
@@ -67,22 +67,22 @@ void testNonCopyableMessage();
 }
 }
 
-namespace networking
+namespace asionet
 {
 namespace message
 {
 
 template<>
-struct Encoder<networking::test::NonCopyableMessage>
+struct Encoder<asionet::test::NonCopyableMessage>
 {
-    void operator()(const networking::test::NonCopyableMessage & message, std::string & data) const
+    void operator()(const asionet::test::NonCopyableMessage & message, std::string & data) const
     {}
 };
 
 template<>
-struct Decoder<networking::test::NonCopyableMessage>
+struct Decoder<asionet::test::NonCopyableMessage>
 {
-    void operator()(networking::test::NonCopyableMessage & message, const std::string & data) const
+    void operator()(asionet::test::NonCopyableMessage & message, const std::string & data) const
     {}
 };
 

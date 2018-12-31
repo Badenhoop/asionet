@@ -14,7 +14,7 @@
 #include "Frame.h"
 #include "Utils.h"
 
-namespace networking
+namespace asionet
 {
 namespace stream
 {
@@ -40,7 +40,7 @@ void write(Networking & net,
            const std::string & writeData,
            const time::Duration & timeout)
 {
-    using namespace networking::internal;
+    using namespace asionet::internal;
     Frame frame{(const std::uint8_t *) writeData.c_str(), (std::uint32_t) writeData.size()};
 
     auto asyncOperation = [](auto && ... args) { boost::asio::async_write(std::forward<decltype(args)>(args)...); };
@@ -60,7 +60,7 @@ void asyncWrite(Networking & net,
                 const time::Duration & timeout,
                 const WriteHandler & handler)
 {
-    using namespace networking::internal;
+    using namespace asionet::internal;
     auto frame = std::make_shared<Frame>((const std::uint8_t *) writeData.c_str(), writeData.size());
 
     auto asyncOperation = [](auto && ... args) { boost::asio::async_write(std::forward<decltype(args)>(args)...); };
@@ -86,8 +86,8 @@ std::string read(Networking & net,
                  boost::asio::streambuf & buffer,
                  time::Duration timeout)
 {
-    using networking::internal::Frame;
-    using namespace networking::stream::internal;
+    using asionet::internal::Frame;
+    using namespace asionet::stream::internal;
 
     auto startTime = time::now();
 
@@ -128,8 +128,8 @@ void asyncRead(Networking & net,
                const time::Duration & timeout,
                const ReadHandler & handler)
 {
-    using networking::internal::Frame;
-    using namespace networking::stream::internal;
+    using asionet::internal::Frame;
+    using namespace asionet::stream::internal;
 
     auto startTime = time::now();
 

@@ -10,7 +10,7 @@
 #include "Socket.h"
 #include "Message.h"
 
-namespace networking
+namespace asionet
 {
 namespace message
 {
@@ -86,7 +86,7 @@ private:
     using Udp = boost::asio::ip::udp;
     using Endpoint = Udp::endpoint;
     using Socket = Udp::socket;
-    using Frame = networking::internal::Frame;
+    using Frame = asionet::internal::Frame;
 
     Networking & net;
     std::uint16_t bindingPort;

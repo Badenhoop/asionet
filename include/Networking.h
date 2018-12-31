@@ -9,7 +9,7 @@
 #include <thread>
 #include "Busyable.h"
 
-namespace networking
+namespace asionet
 {
 
 class Networking

@@ -2,10 +2,10 @@
 // Created by philipp on 28.12.17.
 //
 
-#include "../include/NetworkingLib/Timer.h"
-#include "../include/NetworkingLib/Error.h"
+#include "../include/Timer.h"
+#include "../include/Error.h"
 
-namespace networking
+namespace asionet
 {
 namespace time
 {

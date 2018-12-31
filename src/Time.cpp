@@ -2,9 +2,9 @@
 // Created by philipp on 30.12.17.
 //
 
-#include "../include/NetworkingLib/Time.h"
+#include "../include/Time.h"
 
-namespace networking
+namespace asionet
 {
 namespace time
 {
