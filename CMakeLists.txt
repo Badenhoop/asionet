@@ -29,8 +29,7 @@ set(SOURCE_FILES
         include/Closeable.h
         include/Error.h
         include/Frame.h
-        include/Busyable.h
-        include/TimedValue.h)
+        include/Busyable.h)
 
 ########################
 # Test Executable Target
