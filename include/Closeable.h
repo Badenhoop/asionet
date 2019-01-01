@@ -91,22 +91,23 @@ void timedOperation(ResultTuple & result,
 
     // A 'would_block' closeableError is guaranteed to never occur on an asynchronous operation.
     boost::system::error_code closeableError = boost::asio::error::would_block;
+	Networking::WaitCondition waitCondition{[&] { return closeableError != boost::asio::error::would_block; }};
 
-    // Run asynchronous connect.
+    // Run asynchronous operation.
     asyncOperation(
         std::forward<AsyncOperationArgs>(args)...,
-        [&closeableError, timer, &result](const boost::system::error_code & error, auto && ... remainingHandlerArgs)
+        [&closeableError, &waitCondition, timer, &result](const boost::system::error_code & error, auto && ... remainingHandlerArgs)
         {
             timer->stop();
             // Create a tuple to store the results.
             result = std::make_tuple(error, remainingHandlerArgs...);
-            // Update closeableError variable.
+            // Update closeableError variable and notify wait condition.
             closeableError = error;
+	        waitCondition.variable.notify_all();
         });
 
     // Wait until "something happens" with the closeable.
-    net.waitUntil([&closeableError]()
-                  { return closeableError != boost::asio::error::would_block; });
+    net.waitUntil(waitCondition);
 
     // Determine whether a connection was successfully established.
     // Even though our timer handler might have run to close the closeable, the connect operation

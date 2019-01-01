@@ -211,7 +211,7 @@ void testStoppingServiceServer()
     catch (const error::Aborted & e)
     {
         server->stop();
-        net1.waitWhileBusy(*server);
+        while (server->isBusy());
         server->advertiseService(handler);
         auto response = client->call(PlatoonMessage::followerRequest(42), "127.0.0.1", 10001, 5s);
         if (response->getMessageType() == messageTypes::ACCEPT_RESPONSE)

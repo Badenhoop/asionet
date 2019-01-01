@@ -7,6 +7,7 @@
 
 #include <boost/asio/io_service.hpp>
 #include <thread>
+#include <condition_variable>
 #include "Busyable.h"
 
 namespace asionet
@@ -15,8 +16,19 @@ namespace asionet
 class Networking
 {
 public:
-    using Condition = std::function<bool()>;
-    using Handler = std::function<void()>;
+	using Handler = std::function<void()>;
+	using Condition = std::function<bool()>;
+
+    struct WaitCondition
+    {
+	    explicit WaitCondition(const Condition & condition)
+		    : condition(condition)
+	    {}
+
+	    std::mutex mutex;
+	    std::condition_variable variable;
+	    Condition condition;
+    };
 
     Networking()
     {
@@ -55,7 +67,7 @@ public:
 
     Networking & operator=(Networking && other) = delete;
 
-    void waitUntil(Condition condition)
+    void waitUntil(WaitCondition & waitCondition)
     {
         // This one is quite tricky:
         // We want to wait until the condition becomes true.
@@ -67,18 +79,17 @@ public:
         //      runs already on the ioService-thread, we just wait until the error changed "magically".
         if (std::this_thread::get_id() == thread.get_id())
         {
-            while (!ioService.stopped() && !condition())
+            while (!ioService.stopped() && !waitCondition.condition())
                 ioService.run_one();
         }
         else
         {
-            while (!ioService.stopped() && !condition());
+	        std::unique_lock<std::mutex> lock{waitCondition.mutex};
+	        while (!ioService.stopped() && !waitCondition.condition())
+	        {
+		        waitCondition.variable.wait(lock);
+	        }
         }
-    }
-
-    void waitWhileBusy(Busyable & busyable)
-    {
-        waitUntil([&] { return !busyable.isBusy(); });
     }
 
     void callLater(const Handler & handler)
