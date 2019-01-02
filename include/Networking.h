@@ -77,7 +77,7 @@ public:
         // Else we were not called from the ioService-thread:
         //      Since we must not call ioService.run_one() from a different thread (since we assume ioService.run() permanently
         //      runs already on the ioService-thread, we just wait until the error changed "magically".
-        if (std::this_thread::get_id() == thread.get_id())
+        if (ioService.get_executor().running_in_this_thread())
         {
             while (!ioService.stopped() && !waitCondition.condition())
                 ioService.run_one();
