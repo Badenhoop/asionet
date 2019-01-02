@@ -80,7 +80,7 @@ void timedOperation(ResultTuple & result,
 {
     auto & ioService = net.getIoService();
 
-    auto timer = time::Timer::create(net);
+    auto timer = Timer::create(net);
     timer->startTimeout(
         timeout,
         [&closeable]
@@ -133,7 +133,7 @@ void timedAsyncOperation(Networking & net,
                          const Handler & handler,
                          AsyncOperationArgs && ... asyncOperationArgs)
 {
-    auto timer = time::Timer::create(net);
+    auto timer = Timer::create(net);
     timer->startTimeout(
         timeout,
         [&closeable]

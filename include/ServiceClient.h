@@ -18,12 +18,10 @@
 
 namespace asionet
 {
-namespace service
-{
 
 template<typename Service>
-class Client
-	: public std::enable_shared_from_this<Client<Service>>
+class ServiceClient
+	: public std::enable_shared_from_this<ServiceClient<Service>>
 	  , public Busyable
 {
 private:
@@ -32,7 +30,7 @@ private:
 	};
 
 public:
-	using Ptr = std::shared_ptr<Client<Service>>;
+	using Ptr = std::shared_ptr<ServiceClient<Service>>;
 
 	using RequestMessage = typename Service::RequestMessage;
 	using ResponseMessage = typename Service::ResponseMessage;
@@ -42,10 +40,10 @@ public:
 
 	static Ptr create(Networking & net, std::size_t maxMessageSize = 512)
 	{
-		return std::make_shared<Client<Service>>(PrivateTag{}, net, maxMessageSize);
+		return std::make_shared<ServiceClient<Service>>(PrivateTag{}, net, maxMessageSize);
 	}
 
-	Client(PrivateTag, Networking & net, std::size_t maxMessageSize)
+	ServiceClient(PrivateTag, Networking & net, std::size_t maxMessageSize)
 		: net(net)
 		  , socket(net.getIoService())
 		  , maxMessageSize(maxMessageSize)
@@ -101,7 +99,7 @@ public:
 					return;
 				}
 
-				Client<Service>::updateTimeout(state->timeout, state->startTime);
+				ServiceClient<Service>::updateTimeout(state->timeout, state->startTime);
 
 				// Send the request.
 				asionet::message::asyncSend(
@@ -115,7 +113,7 @@ public:
 							return;
 						}
 
-						Client<Service>::updateTimeout(state->timeout, state->startTime);
+						ServiceClient<Service>::updateTimeout(state->timeout, state->startTime);
 
 						// Receive the response.
 						asionet::message::asyncReceive<ResponseMessage>(
@@ -186,7 +184,6 @@ private:
 	}
 };
 
-}
 }
 
 

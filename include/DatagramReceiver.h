@@ -12,8 +12,6 @@
 
 namespace asionet
 {
-namespace message
-{
 
 template<typename Message>
 class DatagramReceiver
@@ -118,7 +116,6 @@ private:
     };
 };
 
-}
 }
 
 #endif //NETWORKINGLIB_DATAGRAMRECEIVER_H

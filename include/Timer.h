@@ -13,8 +13,6 @@
 
 namespace asionet
 {
-namespace time
-{
 
 class Timer
     : public std::enable_shared_from_this<Timer>
@@ -124,7 +122,6 @@ private:
     }
 };
 
-}
 }
 
 #endif //NETWORKINGLIB_TIMER_H

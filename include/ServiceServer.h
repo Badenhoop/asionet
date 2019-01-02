@@ -10,15 +10,13 @@
 
 namespace asionet
 {
-namespace service
-{
 
 /**
  * Note that Service::ResponseMessage has to be default-constructable.
  * @tparam Service
  */
 template<typename Service>
-class Server : public std::enable_shared_from_this<Server<Service>>
+class ServiceServer : public std::enable_shared_from_this<ServiceServer<Service>>
                , public Busyable
 {
 private:
@@ -30,7 +28,7 @@ public:
     using RequestMessage = typename Service::RequestMessage;
     using ResponseMessage = typename Service::ResponseMessage;
 
-    using Ptr = std::shared_ptr<Server<Service>>;
+    using Ptr = std::shared_ptr<ServiceServer<Service>>;
     using Endpoint = Resolver::Endpoint;
     using RequestReceivedHandler = std::function<void(const Endpoint & clientEndpoint,
                                                       const std::shared_ptr<RequestMessage> & requestMessage,
@@ -38,11 +36,10 @@ public:
 
     static Ptr create(Networking & net, uint16_t bindingPort, std::size_t maxMessageSize = 512)
     {
-        return std::make_shared<Server<Service>>(PrivateTag{}, net, bindingPort, maxMessageSize);
+        return std::make_shared<ServiceServer<Service>>(PrivateTag{}, net, bindingPort, maxMessageSize);
     }
 
-    // Should not be used outside.
-    Server(PrivateTag,
+    ServiceServer(PrivateTag,
            Networking & net,
            uint16_t bindingPort,
            std::size_t maxMessageSize)
@@ -76,14 +73,14 @@ private:
     {
         using Ptr = std::shared_ptr<AdvertiseState>;
 
-        AdvertiseState(Server<Service>::Ptr self,
+        AdvertiseState(ServiceServer<Service>::Ptr self,
                        const RequestReceivedHandler & requestReceivedHandler)
             : self(self)
               , lock(*self)
               , requestReceivedHandler(requestReceivedHandler)
         {}
 
-        Server<Service>::Ptr self;
+        ServiceServer<Service>::Ptr self;
         BusyLock lock;
         RequestReceivedHandler requestReceivedHandler;
     };
@@ -92,7 +89,7 @@ private:
     {
         using Ptr = std::shared_ptr<HandleRequestState>;
 
-        HandleRequestState(Server<Service>::Ptr self,
+        HandleRequestState(ServiceServer<Service>::Ptr self,
                            const RequestReceivedHandler & requestReceivedHandler)
             : self(self)
               , socket(self->net.getIoService())
@@ -100,7 +97,7 @@ private:
               , buffer(self->maxMessageSize + internal::Frame::HEADER_SIZE)
         {}
 
-        Server<Service>::Ptr self;
+        ServiceServer<Service>::Ptr self;
         Socket socket;
         RequestReceivedHandler requestReceivedHandler;
         boost::asio::streambuf buffer;
@@ -161,7 +158,6 @@ private:
     }
 };
 
-}
 }
 
 #endif //PROTOCOL_ProtocolNETWORKSERVICESERVER_H
