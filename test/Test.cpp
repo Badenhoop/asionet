@@ -12,6 +12,8 @@
 #include "../include/DatagramReceiver.h"
 #include "../include/DatagramSender.h"
 #include "../include/Worker.h"
+#include "../include/WorkerPool.h"
+#include "../include/WorkSerializer.h"
 
 using boost::asio::ip::tcp;
 
@@ -660,6 +662,45 @@ void testNonCopyableMessage()
     {}
 
     std::cout << "SUCCESS!\n";
+}
+
+void testWorkerPool()
+{
+	Context context;
+	WorkerPool pool{context, 2};
+    std::mutex mutex;
+	using namespace std::chrono_literals;
+	for (std::size_t i = 0; i < 50; i++)
+    {
+        context.post(
+            [i, &mutex]
+            {
+                std::lock_guard<std::mutex> lock{mutex};
+                std::cout << "output: " << i << " from: " << std::this_thread::get_id() << "\n";
+	            std::this_thread::sleep_for(1ms);
+            });
+    }
+
+	sleep(1);
+}
+
+void testWorkSerializer()
+{
+	Context context;
+	WorkerPool pool{context, 2};
+	WorkSerializer serializer{context};
+	using namespace std::chrono_literals;
+	for (std::size_t i = 0; i < 50; i++)
+	{
+		context.post(serializer(
+			[i, &serializer]
+			{
+				std::cout << "output: " << i << " from: " << std::this_thread::get_id() << std::endl;
+				std::this_thread::sleep_for(1ms);
+			}));
+	}
+
+	sleep(1);
 }
 
 }

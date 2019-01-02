@@ -15,7 +15,6 @@ set(CMAKE_CXX_FLAGS -pthread)
 ###########################
 set(SOURCE_FILES
         include/Context.h
-        include/Networking.h
         include/Socket.h
         include/Stream.h
         include/Message.h
@@ -31,7 +30,9 @@ set(SOURCE_FILES
         include/Error.h
         include/Frame.h
         include/Busyable.h
-        include/Worker.h)
+        include/Worker.h
+        include/WorkerPool.h
+        include/WorkSerializer.h)
 
 ########################
 # Test Executable Target

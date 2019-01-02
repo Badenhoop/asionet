@@ -64,6 +64,10 @@ void testServiceLargeTransferSize();
 
 void testNonCopyableMessage();
 
+void testWorkerPool();
+
+void testWorkSerializer();
+
 }
 }
 

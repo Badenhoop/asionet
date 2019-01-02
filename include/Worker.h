@@ -19,29 +19,28 @@ public:
 		: context(context)
 	{
 		thread = std::thread(
-			[this]()
+			[this]
 			{
 				auto workGuard = boost::asio::make_work_guard<asionet::Context>(this->context);
-				while (true)
-				{
-					try
-					{
-						this->context.run();
-						// run() exited normally.
-						break;
-					}
-					catch (...)
-					{
-						// Ignore exceptions raised by handlers.
-					}
-				}
+				this->context.run();
 			});
 	}
 
 	~Worker()
 	{
+		stop();
+		join();
+	}
+
+	void stop()
+	{
 		context.stop();
-		thread.join();
+	}
+
+	void join()
+	{
+		if (thread.joinable())
+			thread.join();
 	}
 
 private:
