@@ -43,7 +43,7 @@ using ReceiveHandler = std::function<void(const error::ErrorCode & error,
                                           std::uint16_t port)>;
 
 template<typename SocketService>
-void connect(Networking & net,
+void connect(asionet::Context & context,
              SocketService & socket,
              const std::string & host,
              std::uint16_t port,
@@ -55,7 +55,7 @@ void connect(Networking & net,
     auto startTime = time::now();
 
     // Resolve host.
-    Resolver resolver{net.getIoService()};
+    Resolver resolver{context};
     Resolver::Query query{host, std::to_string(port)};
 
     auto resolveOperation = [&resolver](auto && ... args)
@@ -63,7 +63,7 @@ void connect(Networking & net,
 
     std::tuple<boost::system::error_code, Resolver::Iterator> resolveResult;
     closeable::timedOperation(
-        resolveResult, net, resolveOperation, resolver, timeout, query);
+        resolveResult, context, resolveOperation, resolver, timeout, query);
 
     auto endpointIterator = std::get<1>(resolveResult);
 
@@ -76,11 +76,11 @@ void connect(Networking & net,
 
     std::tuple<boost::system::error_code, Resolver::Iterator> connectResult;
     closeable::timedOperation(
-        connectResult, net, connectOperation, socket, timeout, socket, endpointIterator);
+        connectResult, context, connectOperation, socket, timeout, socket, endpointIterator);
 }
 
 template<typename SocketService>
-void asyncConnect(Networking & net,
+void asyncConnect(asionet::Context & context,
                   SocketService & socket,
                   const std::string & host,
                   std::uint16_t port,
@@ -93,15 +93,15 @@ void asyncConnect(Networking & net,
     auto startTime = time::now();
 
     // Resolve host.
-    auto resolver = std::make_shared<Resolver>(net.getIoService());
+    auto resolver = std::make_shared<Resolver>(context);
     Resolver::Query query{host, std::to_string(port)};
 
     auto resolveOperation = [&resolver](auto && ... args)
     { resolver->async_resolve(std::forward<decltype(args)>(args)...); };
 
     closeable::timedAsyncOperation(
-        net, resolveOperation, *resolver, timeout,
-        [&net, &socket, host, port, timeout, handler, resolver, startTime]
+        context, resolveOperation, *resolver, timeout,
+        [&context, &socket, host, port, timeout, handler, resolver, startTime]
             (const auto & networkingError, const auto & boostError, auto endpointIterator)
         {
             if (networkingError)
@@ -118,7 +118,7 @@ void asyncConnect(Networking & net,
             { boost::asio::async_connect(std::forward<decltype(args)>(args)...); };
 
             closeable::timedAsyncOperation(
-                net, connectOperation, socket, newTimeout,
+                context, connectOperation, socket, newTimeout,
                 [handler](const auto & networkingError, const auto & boostError, auto iterator)
                 {
                     handler(networkingError);
@@ -129,7 +129,7 @@ void asyncConnect(Networking & net,
 }
 
 template<typename DatagramSocket>
-void sendTo(Networking & net,
+void sendTo(asionet::Context & context,
             DatagramSocket & socket,
             const std::string & sendData,
             const std::string & host,
@@ -147,7 +147,7 @@ void sendTo(Networking & net,
 
     std::tuple<boost::system::error_code, std::size_t> result;
     closeable::timedOperation(
-        result, net, asyncOperation, socket, timeout, buffer.getBuffers(), endpoint);
+        result, context, asyncOperation, socket, timeout, buffer.getBuffers(), endpoint);
 
     auto numBytesTransferred = std::get<1>(result);
     if (numBytesTransferred < buffer.getSize())
@@ -155,7 +155,7 @@ void sendTo(Networking & net,
 };
 
 template<typename DatagramSocket>
-void asyncSendTo(Networking & net,
+void asyncSendTo(asionet::Context & context,
                  DatagramSocket & socket,
                  std::shared_ptr<std::string> sendData,
                  const std::string & host,
@@ -173,7 +173,7 @@ void asyncSendTo(Networking & net,
     { socket.async_send_to(std::forward<decltype(args)>(args)...); };
 
     closeable::timedAsyncOperation(
-        net, asyncOperation, socket, timeout,
+        context, asyncOperation, socket, timeout,
         [handler, buffer, sendData](const auto & networkingError,
                           const auto & boostError,
                           auto numBytesTransferred)
@@ -190,7 +190,7 @@ void asyncSendTo(Networking & net,
 };
 
 template<typename DatagramSocket>
-std::string receiveFrom(Networking & net,
+std::string receiveFrom(asionet::Context & context,
                         DatagramSocket & socket,
                         std::vector<char> buffer,
                         std::string & senderHost,
@@ -205,7 +205,7 @@ std::string receiveFrom(Networking & net,
 
     std::tuple<boost::system::error_code, std::size_t> result;
     closeable::timedOperation(
-        result, net, asyncOperation, socket, timeout, boost::asio::buffer(buffer), senderEndpoint);
+        result, context, asyncOperation, socket, timeout, boost::asio::buffer(buffer), senderEndpoint);
 
     senderHost = senderEndpoint.address().to_string();
     senderPort = senderEndpoint.port();
@@ -218,7 +218,7 @@ std::string receiveFrom(Networking & net,
 }
 
 template<typename DatagramSocket>
-void asyncReceiveFrom(Networking & net,
+void asyncReceiveFrom(asionet::Context & context,
                       DatagramSocket & socket,
                       std::vector<char> & buffer,
                       const time::Duration & timeout,
@@ -231,7 +231,7 @@ void asyncReceiveFrom(Networking & net,
     { socket.async_receive_from(std::forward<decltype(args)>(args)...); };
 
     closeable::timedAsyncOperation(
-        net, asyncOperation, socket, timeout,
+        context, asyncOperation, socket, timeout,
         [&buffer, handler, senderEndpoint](const auto & networkingError, const auto & boostError, auto numBytesTransferred)
         {
             std::string receiveData{};

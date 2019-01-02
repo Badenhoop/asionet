@@ -6,7 +6,7 @@
 #define PROTOCOL_ProtocolNETWORKSERVICESERVER_H
 
 #include "Message.h"
-#include "Networking.h"
+#include "Context.h"
 
 namespace asionet
 {
@@ -34,18 +34,18 @@ public:
                                                       const std::shared_ptr<RequestMessage> & requestMessage,
                                                       ResponseMessage & response)>;
 
-    static Ptr create(Networking & net, uint16_t bindingPort, std::size_t maxMessageSize = 512)
+    static Ptr create(asionet::Context & context, uint16_t bindingPort, std::size_t maxMessageSize = 512)
     {
-        return std::make_shared<ServiceServer<Service>>(PrivateTag{}, net, bindingPort, maxMessageSize);
+        return std::make_shared<ServiceServer<Service>>(PrivateTag{}, context, bindingPort, maxMessageSize);
     }
 
     ServiceServer(PrivateTag,
-           Networking & net,
-           uint16_t bindingPort,
-           std::size_t maxMessageSize)
-        : net(net)
+                  asionet::Context & context,
+                  uint16_t bindingPort,
+                  std::size_t maxMessageSize)
+        : context(context)
           , bindingPort(bindingPort)
-          , acceptor(net.getIoService())
+          , acceptor(context)
           , maxMessageSize(maxMessageSize)
     {}
 
@@ -92,7 +92,7 @@ private:
         HandleRequestState(ServiceServer<Service>::Ptr self,
                            const RequestReceivedHandler & requestReceivedHandler)
             : self(self)
-              , socket(self->net.getIoService())
+              , socket(self->context)
               , requestReceivedHandler(requestReceivedHandler)
               , buffer(self->maxMessageSize + internal::Frame::HEADER_SIZE)
         {}
@@ -103,7 +103,7 @@ private:
         boost::asio::streambuf buffer;
     };
 
-    Networking & net;
+    asionet::Context & context;
     std::uint16_t bindingPort;
     Acceptor acceptor;
     std::size_t maxMessageSize;
@@ -112,7 +112,7 @@ private:
     void accept(typename AdvertiseState::Ptr advertiseState)
     {
         if (!acceptor.is_open())
-            acceptor = Acceptor(net.getIoService(), Tcp::endpoint{Tcp::v4(), bindingPort});
+            acceptor = Acceptor(context, Tcp::endpoint{Tcp::v4(), bindingPort});
 
         auto handleRequestState = std::make_shared<HandleRequestState>(
             advertiseState->self, advertiseState->requestReceivedHandler);
@@ -129,7 +129,7 @@ private:
                     using namespace std::chrono_literals;
 
                     asionet::message::asyncReceive<RequestMessage>(
-                        handleRequestState->self->net, handleRequestState->socket, handleRequestState->buffer, 10s,
+                        handleRequestState->self->context, handleRequestState->socket, handleRequestState->buffer, 10s,
                         [handleRequestState](const auto & errorCode, const auto & request)
                         {
                             // If a receive has timed out we treat it like we've never
@@ -143,7 +143,7 @@ private:
                             handleRequestState->requestReceivedHandler(clientEndpoint, request, response);
 
                             asionet::message::asyncSend(
-                                handleRequestState->self->net, handleRequestState->socket, response, 5s,
+                                handleRequestState->self->context, handleRequestState->socket, response, 5s,
                                 [handleRequestState](const auto & errorCode)
                                 {
                                     // We cannot be sure that the message is going to be received at the other side anyway,

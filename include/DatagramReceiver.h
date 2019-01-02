@@ -5,10 +5,10 @@
 #ifndef NETWORKINGLIB_DATAGRAMRECEIVER_H
 #define NETWORKINGLIB_DATAGRAMRECEIVER_H
 
-#include "Networking.h"
 #include "Stream.h"
 #include "Socket.h"
 #include "Message.h"
+#include "Context.h"
 
 namespace asionet
 {
@@ -32,15 +32,15 @@ public:
              const std::string & host,
              std::uint16_t port)>;
 
-    static Ptr create(Networking & net, std::uint16_t bindingPort, std::size_t maxMessageSize = 512)
+    static Ptr create(asionet::Context & context, std::uint16_t bindingPort, std::size_t maxMessageSize = 512)
     {
-        return std::make_shared<DatagramReceiver<Message>>(PrivateTag{}, net, bindingPort, maxMessageSize);
+        return std::make_shared<DatagramReceiver<Message>>(PrivateTag{}, context, bindingPort, maxMessageSize);
     }
 
-    DatagramReceiver(PrivateTag, Networking & net, std::uint16_t bindingPort, std::size_t maxMessageSize)
-        : net(net)
+    DatagramReceiver(PrivateTag, asionet::Context & context, std::uint16_t bindingPort, std::size_t maxMessageSize)
+        : context(context)
           , bindingPort(bindingPort)
-          , socket(net.getIoService())
+          , socket(context)
           , buffer(maxMessageSize + Frame::HEADER_SIZE)
     {}
 
@@ -48,7 +48,7 @@ public:
     {
         BusyLock busyLock{*this};
         setupSocket();
-        return message::receiveDatagram<Message>(net, socket, buffer, host, port, timeout);
+        return message::receiveDatagram<Message>(context, socket, buffer, host, port, timeout);
     }
 
     void asyncReceive(const time::Duration & timeout, const ReceiveHandler & handler)
@@ -59,7 +59,7 @@ public:
         setupSocket();
 
         message::asyncReceiveDatagram<Message>(
-            net, socket, buffer, timeout,
+            context, socket, buffer, timeout,
             [state](const auto & error,
                     const auto & message,
                     const auto & senderHost,
@@ -86,7 +86,7 @@ private:
     using Socket = Udp::socket;
     using Frame = asionet::internal::Frame;
 
-    Networking & net;
+    asionet::Context & context;
     std::uint16_t bindingPort;
     Socket socket;
     std::vector<char> buffer;

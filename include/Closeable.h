@@ -5,9 +5,10 @@
 #ifndef NETWORKINGLIB_CLOSEABLE_H_H
 #define NETWORKINGLIB_CLOSEABLE_H_H
 
-#include "Networking.h"
 #include "Timer.h"
 #include "Error.h"
+#include "Context.h"
+#include "Utils.h"
 
 namespace asionet
 {
@@ -72,15 +73,13 @@ template<
     typename... AsyncOperationArgs,
     typename Closeable>
 void timedOperation(ResultTuple & result,
-                    Networking & net,
+                    asionet::Context & context,
                     AsyncOperation asyncOperation,
                     Closeable & closeable,
                     const time::Duration & timeout,
                     AsyncOperationArgs && ... args)
 {
-    auto & ioService = net.getIoService();
-
-    auto timer = Timer::create(net);
+    auto timer = Timer::create(context);
     timer->startTimeout(
         timeout,
         [&closeable]
@@ -91,7 +90,7 @@ void timedOperation(ResultTuple & result,
 
     // A 'would_block' closeableError is guaranteed to never occur on an asynchronous operation.
     boost::system::error_code closeableError = boost::asio::error::would_block;
-	Networking::WaitCondition waitCondition{[&] { return closeableError != boost::asio::error::would_block; }};
+	utils::WaitCondition waitCondition{[&] { return closeableError != boost::asio::error::would_block; }};
 
     // Run asynchronous operation.
     asyncOperation(
@@ -107,7 +106,7 @@ void timedOperation(ResultTuple & result,
         });
 
     // Wait until "something happens" with the closeable.
-    net.waitUntil(waitCondition);
+    utils::waitUntil(context, waitCondition);
 
     // Determine whether a connection was successfully established.
     // Even though our timer handler might have run to close the closeable, the connect operation
@@ -126,14 +125,14 @@ template<
     typename... AsyncOperationArgs,
     typename Closeable,
     typename Handler>
-void timedAsyncOperation(Networking & net,
+void timedAsyncOperation(asionet::Context & context,
                          AsyncOperation asyncOperation,
                          Closeable & closeable,
                          const time::Duration & timeout,
                          const Handler & handler,
                          AsyncOperationArgs && ... asyncOperationArgs)
 {
-    auto timer = Timer::create(net);
+    auto timer = Timer::create(context);
     timer->startTimeout(
         timeout,
         [&closeable]

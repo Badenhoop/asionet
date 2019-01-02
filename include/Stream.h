@@ -7,7 +7,6 @@
 
 #include <boost/asio/ip/tcp.hpp>
 #include <boost/asio.hpp>
-#include "Networking.h"
 #include "Timer.h"
 #include "Error.h"
 #include "Closeable.h"
@@ -35,7 +34,7 @@ using WriteHandler = std::function<void(const error::ErrorCode & error)>;
 using ReadHandler = std::function<void(const error::ErrorCode & error, std::string & data)>;
 
 template<typename SyncWriteStream>
-void write(Networking & net,
+void write(asionet::Context & context,
            SyncWriteStream & stream,
            const std::string & writeData,
            const time::Duration & timeout)
@@ -46,7 +45,7 @@ void write(Networking & net,
     auto asyncOperation = [](auto && ... args) { boost::asio::async_write(std::forward<decltype(args)>(args)...); };
 
     std::tuple<boost::system::error_code, std::size_t> result;
-    closeable::timedOperation(result, net, asyncOperation, stream, timeout, stream, frame.getBuffers());
+    closeable::timedOperation(result, context, asyncOperation, stream, timeout, stream, frame.getBuffers());
 
     auto numBytesTransferred = std::get<1>(result);
     if (numBytesTransferred < frame.getSize())
@@ -54,7 +53,7 @@ void write(Networking & net,
 };
 
 template<typename SyncWriteStream>
-void asyncWrite(Networking & net,
+void asyncWrite(asionet::Context & context,
                 SyncWriteStream & stream,
                 std::shared_ptr<std::string> writeData,
                 const time::Duration & timeout,
@@ -66,7 +65,7 @@ void asyncWrite(Networking & net,
     auto asyncOperation = [](auto && ... args) { boost::asio::async_write(std::forward<decltype(args)>(args)...); };
 
     closeable::timedAsyncOperation(
-        net, asyncOperation, stream, timeout,
+        context, asyncOperation, stream, timeout,
         [handler, frame, writeData](const auto & networkingError, const auto & boostError, auto numBytesTransferred)
         {
             if (numBytesTransferred < frame->getSize())
@@ -81,7 +80,7 @@ void asyncWrite(Networking & net,
 }
 
 template<typename SyncReadStream>
-std::string read(Networking & net,
+std::string read(asionet::Context & context,
                  SyncReadStream & stream,
                  boost::asio::streambuf & buffer,
                  time::Duration timeout)
@@ -97,7 +96,7 @@ std::string read(Networking & net,
 
     // Receive frame header.
     closeable::timedOperation(
-        result, net, asyncOperation, stream, timeout, stream, buffer,
+        result, context, asyncOperation, stream, timeout, stream, buffer,
         boost::asio::transfer_exactly(Frame::HEADER_SIZE));
 
     auto numBytesTransferred = std::get<1>(result);
@@ -112,7 +111,7 @@ std::string read(Networking & net,
 
     // Receive actual data.
     closeable::timedOperation(
-        result, net, asyncOperation, stream, timeout, stream, buffer, boost::asio::transfer_exactly(numDataBytes));
+        result, context, asyncOperation, stream, timeout, stream, buffer, boost::asio::transfer_exactly(numDataBytes));
 
     numBytesTransferred = std::get<1>(result);
     if (numBytesTransferred != numDataBytes)
@@ -122,7 +121,7 @@ std::string read(Networking & net,
 };
 
 template<typename SyncReadStream>
-void asyncRead(Networking & net,
+void asyncRead(asionet::Context & context,
                SyncReadStream & stream,
                boost::asio::streambuf & buffer,
                const time::Duration & timeout,
@@ -137,8 +136,8 @@ void asyncRead(Networking & net,
 
     // Receive frame header.
     closeable::timedAsyncOperation(
-        net, asyncOperation, stream, timeout,
-        [&net, &stream, &buffer, timeout, handler, startTime, asyncOperation]
+        context, asyncOperation, stream, timeout,
+        [&context, &stream, &buffer, timeout, handler, startTime, asyncOperation]
             (const auto & networkingError, const auto & boostError, auto numBytesTransferred)
         {
             std::string data{};
@@ -167,7 +166,7 @@ void asyncRead(Networking & net,
 
             // Receive actual data.
             closeable::timedAsyncOperation(
-                net, asyncOperation, stream, newTimeout,
+                context, asyncOperation, stream, newTimeout,
                 [&buffer, handler, numDataBytes]
                     (const auto & networkingError, const auto & boostError, auto numBytesTransferred)
                 {

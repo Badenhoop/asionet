@@ -11,7 +11,6 @@
 #include <boost/asio/write.hpp>
 #include <boost/asio/read.hpp>
 #include "Stream.h"
-#include "Networking.h"
 #include "Socket.h"
 #include <boost/algorithm/string/replace.hpp>
 
@@ -88,7 +87,7 @@ bool decode(const std::string & data, std::shared_ptr<Message> & message)
 }
 
 template<typename Message, typename SyncWriteStream>
-void send(Networking & net,
+void send(asionet::Context & context,
           SyncWriteStream & stream,
           const Message & message,
           const time::Duration & timeout)
@@ -96,11 +95,11 @@ void send(Networking & net,
 	std::shared_ptr<std::string> data;
 	if (!internal::encode(message, data))
 		throw error::Encoding{};
-	asionet::stream::write(net, stream, *data, timeout);
+	asionet::stream::write(context, stream, *data, timeout);
 };
 
 template<typename Message, typename SyncWriteStream>
-void asyncSend(Networking & net,
+void asyncSend(asionet::Context & context,
                SyncWriteStream & stream,
                const Message & message,
                const time::Duration & timeout,
@@ -109,23 +108,23 @@ void asyncSend(Networking & net,
 	std::shared_ptr<std::string> data;
 	if (!internal::encode(message, data))
 	{
-		net.callLater(
+		context.post(
 			[handler] { handler(error::codes::ENCODING); });
 		return;
 	}
 
 	asionet::stream::asyncWrite(
-		net, stream, data, timeout,
+		context, stream, data, timeout,
 		[handler, data](const auto & errorCode) { handler(errorCode); });
 };
 
 template<typename Message, typename SyncReadStream>
-std::shared_ptr<Message> receive(Networking & net,
+std::shared_ptr<Message> receive(asionet::Context & context,
                                  SyncReadStream & stream,
                                  boost::asio::streambuf & buffer,
                                  const time::Duration & timeout)
 {
-	auto data = asionet::stream::read(net, stream, buffer, timeout);
+	auto data = asionet::stream::read(context, stream, buffer, timeout);
 	std::shared_ptr<Message> message;
 	if (!internal::decode(data, message))
 		throw error::Decoding{};
@@ -133,14 +132,14 @@ std::shared_ptr<Message> receive(Networking & net,
 };
 
 template<typename Message, typename SyncReadStream>
-void asyncReceive(Networking & net,
+void asyncReceive(asionet::Context & context,
                   SyncReadStream & stream,
                   boost::asio::streambuf & buffer,
                   const time::Duration & timeout,
                   const ReceiveHandler<Message> & handler)
 {
 	asionet::stream::asyncRead(
-		net, stream, buffer, timeout,
+		context, stream, buffer, timeout,
 		[handler](const auto & errorCode, const auto & data)
 		{
 			std::shared_ptr<Message> message;
@@ -154,7 +153,7 @@ void asyncReceive(Networking & net,
 };
 
 template<typename Message, typename DatagramSocket>
-void sendDatagram(Networking & net,
+void sendDatagram(asionet::Context & context,
                   DatagramSocket & socket,
                   const Message & message,
                   const std::string & host,
@@ -164,11 +163,11 @@ void sendDatagram(Networking & net,
 	std::shared_ptr<std::string> data;
 	if (!internal::encode(message, data))
 		throw error::Encoding{};
-	asionet::socket::sendTo(net, socket, *data, host, port, timeout);
+	asionet::socket::sendTo(context, socket, *data, host, port, timeout);
 }
 
 template<typename Message, typename DatagramSocket>
-void asyncSendDatagram(Networking & net,
+void asyncSendDatagram(asionet::Context & context,
                        DatagramSocket & socket,
                        const Message & message,
                        const std::string & host,
@@ -179,25 +178,25 @@ void asyncSendDatagram(Networking & net,
 	std::shared_ptr<std::string> data;
 	if (!internal::encode(message, data))
 	{
-		net.callLater(
+		context.post(
 			[handler] { handler(error::codes::ENCODING); });
 		return;
 	}
 
 	asionet::socket::asyncSendTo(
-		net, socket, data, host, port, timeout,
+		context, socket, data, host, port, timeout,
 		[handler, data](const auto & error) { handler(error); });
 }
 
 template<typename Message, typename DatagramSocket>
-std::shared_ptr<Message> receiveDatagram(Networking & net,
+std::shared_ptr<Message> receiveDatagram(asionet::Context & context,
                                          DatagramSocket & socket,
                                          std::vector<char> & buffer,
                                          std::string & host,
                                          std::uint16_t & port,
                                          const time::Duration & timeout)
 {
-	auto data = asionet::socket::receiveFrom(net, socket, buffer, host, port, timeout);
+	auto data = asionet::socket::receiveFrom(context, socket, buffer, host, port, timeout);
 	std::shared_ptr<Message> message;
 	if (!internal::decode(data, message))
 		throw error::Decoding{};
@@ -205,14 +204,14 @@ std::shared_ptr<Message> receiveDatagram(Networking & net,
 }
 
 template<typename Message, typename DatagramSocket>
-void asyncReceiveDatagram(Networking & net,
+void asyncReceiveDatagram(asionet::Context & context,
                           DatagramSocket & socket,
                           std::vector<char> & buffer,
                           const time::Duration & timeout,
                           const ReceiveFromHandler<Message> & handler)
 {
 	asionet::socket::asyncReceiveFrom(
-		net, socket, buffer, timeout,
+		context, socket, buffer, timeout,
 		[handler](auto error, const auto & data, const auto & senderHost, auto senderPort)
 		{
 			std::shared_ptr<Message> message;

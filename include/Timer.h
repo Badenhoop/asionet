@@ -5,11 +5,11 @@
 #ifndef NETWORKINGLIB_TIMER_H
 #define NETWORKINGLIB_TIMER_H
 
-#include "Networking.h"
 #include <boost/asio.hpp>
 #include <boost/asio/steady_timer.hpp>
 #include "Time.h"
 #include "Busyable.h"
+#include "Context.h"
 
 namespace asionet
 {
@@ -28,13 +28,13 @@ public:
     using TimeoutHandler = std::function<void()>;
 
     // Objects of this class should always be declared as std::shared_ptr.
-    Timer(PrivateTag, Networking & net)
-        : timer(net.getIoService())
+    Timer(PrivateTag, asionet::Context & context)
+        : timer(context)
     {}
 
-    static Ptr create(Networking & net)
+    static Ptr create(asionet::Context & context)
     {
-        return std::make_shared<Timer>(PrivateTag{}, net);
+        return std::make_shared<Timer>(PrivateTag{}, context);
     }
 
     void startTimeout(const time::Duration & duration, const TimeoutHandler & handler)

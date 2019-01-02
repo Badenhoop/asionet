@@ -11,6 +11,7 @@
 #include "../include/ServiceClient.h"
 #include "../include/DatagramReceiver.h"
 #include "../include/DatagramSender.h"
+#include "../include/Worker.h"
 
 using boost::asio::ip::tcp;
 
@@ -24,10 +25,11 @@ namespace test
 void testSyncServices()
 {
     using namespace protocol;
-    Networking net1;
-    Networking net2;
+    Context context1, context2;
+    Worker worker1{context1};
+    Worker worker2{context2};
 
-    auto server = ServiceServer<PlatoonService>::create(net1, 10001);
+    auto server = ServiceServer<PlatoonService>::create(context1, 10001);
 
     server->advertiseService(
         [](const auto & clientEndpoint, const auto & requestMessage, auto & responseMessage)
@@ -44,7 +46,7 @@ void testSyncServices()
 
     int correct = 0;
 
-    auto client = ServiceClient<PlatoonService>::create(net2);
+    auto client = ServiceClient<PlatoonService>::create(context2);
     for (int i = 0; i < 5; i++)
     {
         auto response = client->call(PlatoonMessage::followerRequest(2), "127.0.0.1", 10001, 1s);
@@ -62,9 +64,10 @@ void testSyncServices()
 void testAsyncServices()
 {
     using namespace protocol;
-    Networking net;
+    Context context;
+    Worker worker{context};
 
-    auto server = ServiceServer<PlatoonService>::create(net, 10001);
+    auto server = ServiceServer<PlatoonService>::create(context, 10001);
 
     server->advertiseService(
         [](const auto & clientEndpoint, const auto & requestMessage, auto & responseMessage)
@@ -82,7 +85,7 @@ void testAsyncServices()
     std::atomic<std::size_t> pending{5};
     std::atomic<std::size_t> correct{0};
 
-    auto client = ServiceClient<PlatoonService>::create(net);
+    auto client = ServiceClient<PlatoonService>::create(context);
     for (int i = 0; i < 5; i++)
     {
         client->asyncCall(
@@ -114,12 +117,13 @@ void testAsyncServices()
 void testTcpClientTimeout()
 {
     using namespace protocol;
-    Networking net1;
-    Networking net2;
+    Context context1, context2;
+    Worker worker1{context1};
+    Worker worker2{context2};
 
     const auto timeout = 3s;
 
-    auto server = ServiceServer<PlatoonService>::create(net1, 10001);
+    auto server = ServiceServer<PlatoonService>::create(context1, 10001);
 
     server->advertiseService(
         [](const auto & clientEndpoint, const auto & requestMessage, auto & responseMessage)
@@ -131,7 +135,7 @@ void testTcpClientTimeout()
 
     sleep(1);
 
-    auto client = ServiceClient<PlatoonService>::create(net2);
+    auto client = ServiceClient<PlatoonService>::create(context2);
     auto startTime = boost::posix_time::microsec_clock::local_time();
     try
     {
@@ -151,12 +155,13 @@ void testTcpClientTimeout()
 void testMultipleConnections()
 {
     using namespace protocol;
-    Networking net1;
-    Networking net2;
-    Networking net3;
+    Context context1, context2, context3;
+    Worker worker1{context1};
+    Worker worker2{context2};
+    Worker worker3{context3};
 
-    auto server1 = ServiceServer<PlatoonService>::create(net1, 10001);
-    auto server2 = ServiceServer<PlatoonService>::create(net2, 10002);
+    auto server1 = ServiceServer<PlatoonService>::create(context1, 10001);
+    auto server2 = ServiceServer<PlatoonService>::create(context2, 10002);
 
     server1->advertiseService(
         [](const auto & clientEndpoint, const auto & requestMessage, auto & responseMessage)
@@ -171,7 +176,7 @@ void testMultipleConnections()
 
     sleep(1);
 
-    auto client = ServiceClient<PlatoonService>::create(net3);
+    auto client = ServiceClient<PlatoonService>::create(context3);
 
     auto response1 = client->call(PlatoonMessage::followerRequest(1), "127.0.0.1", 10001, 5s);
     std::cout << "Response from " << response1->getVehicleId() << std::endl;
@@ -187,10 +192,11 @@ void testMultipleConnections()
 void testStoppingServiceServer()
 {
     using namespace protocol;
-    Networking net1;
-    Networking net2;
+    Context context1, context2;
+    Worker worker1{context1};
+    Worker worker2{context2};
 
-    auto server = ServiceServer<PlatoonService>::create(net1, 10001);
+    auto server = ServiceServer<PlatoonService>::create(context1, 10001);
 
     auto handler = [](const auto & clientEndpoint, const auto & requestMessage, auto & responseMessage)
     {
@@ -203,7 +209,7 @@ void testStoppingServiceServer()
 
     sleep(1);
 
-    auto client = ServiceClient<PlatoonService>::create(net2);
+    auto client = ServiceClient<PlatoonService>::create(context2);
     try
     {
         auto response = client->call(PlatoonMessage::followerRequest(42), "127.0.0.1", 10001, 1s);
@@ -222,11 +228,12 @@ void testStoppingServiceServer()
 void testAsyncDatagramReceiver()
 {
     using namespace protocol;
-    Networking net1;
-    Networking net2;
+    Context context1, context2;
+    Worker worker1{context1};
+    Worker worker2{context2};
 
-    auto receiver = DatagramReceiver<PlatoonMessage>::create(net1, 10000);
-    auto sender = DatagramSender<PlatoonMessage>::create(net2);
+    auto receiver = DatagramReceiver<PlatoonMessage>::create(context1, 10000);
+    auto sender = DatagramSender<PlatoonMessage>::create(context2);
 
     std::atomic<bool> running{true};
 
@@ -251,9 +258,10 @@ void testAsyncDatagramReceiver()
 
 void testPeriodicTimer()
 {
-    Networking net;
+    Context context;
+    Worker worker{context};
 
-    auto timer = Timer::create(net);
+    auto timer = Timer::create(context);
 
     int run = 0;
     std::atomic<bool> running{true};
@@ -284,10 +292,11 @@ void testPeriodicTimer()
 void testServiceClientAsyncCallTimeout()
 {
     using namespace protocol;
-    Networking net1;
-    Networking net2;
+    Context context1, context2;
+    Worker worker1{context1};
+    Worker worker2{context2};
 
-    auto server = ServiceServer<PlatoonService>::create(net1, 10001);
+    auto server = ServiceServer<PlatoonService>::create(context1, 10001);
 
     server->advertiseService(
         [](const auto & clientEndpoint, const auto & requestMessage, auto & responseMessage)
@@ -298,7 +307,7 @@ void testServiceClientAsyncCallTimeout()
 
     sleep(1);
 
-    auto client = ServiceClient<PlatoonService>::create(net2);
+    auto client = ServiceClient<PlatoonService>::create(context2);
 
     std::atomic<bool> running{true};
 
@@ -319,10 +328,11 @@ void testServiceClientAsyncCallTimeout()
 void testDatagramSenderAsyncSend()
 {
     using namespace protocol;
-    Networking net;
+    Context context;
+    Worker worker{context};
 
-    auto receiver = DatagramReceiver<PlatoonMessage>::create(net, 10000);
-    auto sender = DatagramSender<PlatoonMessage>::create(net);
+    auto receiver = DatagramReceiver<PlatoonMessage>::create(context, 10000);
+    auto sender = DatagramSender<PlatoonMessage>::create(context);
 
     std::atomic<bool> running{true};
 
@@ -356,9 +366,10 @@ void testDatagramSenderAsyncSend()
 
 void testResolver()
 {
-    Networking net;
+    Context context;
+    Worker worker{context};
 
-    auto resolver = Resolver::create(net);
+    auto resolver = Resolver::create(context);
 
     std::atomic<bool> running{true};
     bool thrown{false};
@@ -394,10 +405,11 @@ void testResolver()
 
 void testStringMessageOverDatagram()
 {
-    Networking net;
+    Context context;
+    Worker worker{context};
 
-    auto receiver = DatagramReceiver<std::string>::create(net, 10000);
-    auto sender = DatagramSender<std::string>::create(net);
+    auto receiver = DatagramReceiver<std::string>::create(context, 10000);
+    auto sender = DatagramSender<std::string>::create(context);
 
     std::atomic<bool> running{true};
 
@@ -424,10 +436,11 @@ void testStringMessageOverDatagram()
 
 void testStringMessageOverService()
 {
-    Networking net;
+    Context context;
+    Worker worker{context};
 
-    auto server = ServiceServer<StringService>::create(net, 10000);
-    auto client = ServiceClient<StringService>::create(net);
+    auto server = ServiceServer<StringService>::create(context, 10000);
+    auto client = ServiceClient<StringService>::create(context);
 
     std::atomic<bool> running{true};
 
@@ -463,12 +476,13 @@ void testStringMessageOverService()
 
 void testServiceServerMaxMessageSize()
 {
-    Networking net;
+    Context context;
+    Worker worker{context};
 
     std::atomic<bool> running{true};
     std::atomic<bool> syncCallError{false};
 
-    auto server = ServiceServer<StringService>::create(net, 10000, 100);
+    auto server = ServiceServer<StringService>::create(context, 10000, 100);
     server->advertiseService(
         [](auto && ...)
         {
@@ -476,7 +490,7 @@ void testServiceServerMaxMessageSize()
         });
 
     sleep(1);
-    auto client = ServiceClient<StringService>::create(net, 200);
+    auto client = ServiceClient<StringService>::create(context, 200);
     try
     {
         auto response = client->call(std::string(200, 'a'), "127.0.0.1", 10000, 1s);
@@ -501,13 +515,14 @@ void testServiceServerMaxMessageSize()
 
 void testServiceClientMaxMessageSize()
 {
-    Networking net;
+    Context context;
+    Worker worker{context};
 
     std::atomic<bool> running{true};
     std::atomic<std::size_t> serverReceivedCount{0};
     std::atomic<bool> syncCallError{false};
 
-    auto server = ServiceServer<StringService>::create(net, 10000, 200);
+    auto server = ServiceServer<StringService>::create(context, 10000, 200);
     server->advertiseService(
         [&serverReceivedCount](const auto & endpoint, const auto & request, auto & response)
         {
@@ -516,7 +531,7 @@ void testServiceClientMaxMessageSize()
         });
 
     sleep(1);
-    auto client = ServiceClient<StringService>::create(net, 100);
+    auto client = ServiceClient<StringService>::create(context, 100);
     try
     {
         auto response = client->call(std::string{}, "127.0.0.1", 10000, 1s);
@@ -541,14 +556,15 @@ void testServiceClientMaxMessageSize()
 
 void testServiceLargeTransferSize()
 {
-    Networking net;
+    Context context;
+    Worker worker{context};
 
     std::size_t transferSize = 0x10000;
     std::string data(transferSize, 'a');
     std::atomic<bool> running{true};
     std::atomic<bool> success{true};
-    auto server = ServiceServer<StringService>::create(net, 10000, transferSize);
-    auto client = ServiceClient<StringService>::create(net, transferSize);
+    auto server = ServiceServer<StringService>::create(context, 10000, transferSize);
+    auto client = ServiceClient<StringService>::create(context, transferSize);
 
     server->advertiseService(
         [&](const auto & endpoint, const auto & request, auto & response)
@@ -573,13 +589,14 @@ void testServiceLargeTransferSize()
 
 void testDatagramReceiverMaxMessageSize()
 {
-    Networking net;
+    Context context;
+    Worker worker{context};
 
     std::atomic<bool> asyncReceiveFailed{false};
     std::atomic<bool> running{true};
 
-    auto receiver = DatagramReceiver<std::string>::create(net, 10000, 100);
-    auto sender = DatagramSender<std::string>::create(net);
+    auto receiver = DatagramReceiver<std::string>::create(context, 10000, 100);
+    auto sender = DatagramSender<std::string>::create(context);
 
     receiver->asyncReceive(
         1s,
@@ -630,9 +647,10 @@ void testNonCopyableMessage()
 
     try
     {
-        Networking net;
-        auto sender = DatagramSender<NonCopyableMessage>::create(net);
-        auto receiver = DatagramReceiver<NonCopyableMessage>::create(net, 10000);
+        Context context;
+        Worker worker{context};
+        auto sender = DatagramSender<NonCopyableMessage>::create(context);
+        auto receiver = DatagramReceiver<NonCopyableMessage>::create(context, 10000);
         sender->send(NonCopyableMessage{}, "127.0.0.1", 10000, 0s);
         std::string host;
         std::uint16_t port;

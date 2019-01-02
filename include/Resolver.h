@@ -7,10 +7,10 @@
 
 #include <memory>
 #include <boost/asio/ip/tcp.hpp>
-#include "Networking.h"
 #include "Error.h"
 #include "Utils.h"
 #include "Busyable.h"
+#include "Context.h"
 
 namespace asionet
 {
@@ -83,14 +83,14 @@ public:
 
     using ResolveHandler = std::function<void(const error::ErrorCode & error, const std::vector<Endpoint> & endpoints)>;
 
-    static Ptr create(Networking & net)
+    static Ptr create(asionet::Context & context)
     {
-        return std::make_shared<Resolver>(PrivateTag{}, net);
+        return std::make_shared<Resolver>(PrivateTag{}, context);
     }
 
-    Resolver(PrivateTag, Networking & net)
-        : net(net)
-          , resolver(net.getIoService())
+    Resolver(PrivateTag, asionet::Context & context)
+        : context(context)
+          , resolver(context)
     {}
 
     std::vector<Endpoint> resolve(const std::string & host,
@@ -109,7 +109,7 @@ public:
 
         closeable::timedOperation(
             result,
-            net,
+            context,
             resolveOperation,
             resolver,
             timeout,
@@ -136,7 +136,7 @@ public:
         { resolver.async_resolve(std::forward<decltype(args)>(args)...); };
 
         closeable::timedAsyncOperation(
-            net,
+            context,
             resolveOperation,
             resolver,
             timeout,
@@ -162,7 +162,7 @@ private:
     using Protocol = boost::asio::ip::tcp;
     using UnderlyingResolver = internal::CloseableResolver<Protocol>;
 
-    Networking & net;
+    asionet::Context & context;
     UnderlyingResolver resolver;
 
     std::vector<Endpoint> endpointsFromIterator(UnderlyingResolver::Iterator iterator)

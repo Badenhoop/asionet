@@ -6,7 +6,6 @@
 #define NETWORKINGLIB_DATAGRAMSENDER_H
 
 #include "Stream.h"
-#include "Networking.h"
 #include "Message.h"
 #include "Utils.h"
 
@@ -28,14 +27,14 @@ public:
 
     using SendHandler = std::function<void(const error::ErrorCode & error)>;
 
-    static Ptr create(Networking & net)
+    static Ptr create(asionet::Context & context)
     {
-        return std::make_shared<DatagramSender>(PrivateTag{}, net);
+        return std::make_shared<DatagramSender>(PrivateTag{}, context);
     }
 
-    DatagramSender(PrivateTag, Networking & net)
-        : net(net)
-          , socket(net.getIoService())
+    DatagramSender(PrivateTag, asionet::Context & context)
+        : context(context)
+          , socket(context)
     {}
 
     void send(const Message & message,
@@ -45,7 +44,7 @@ public:
     {
         BusyLock busyLock{*this};
         setupSocket();
-        asionet::message::sendDatagram(net, socket, message, ip, port, timeout);
+        asionet::message::sendDatagram(context, socket, message, ip, port, timeout);
     }
 
     void asyncSend(const Message & message,
@@ -59,7 +58,7 @@ public:
         setupSocket();
 
         asionet::message::asyncSendDatagram(
-            net, socket, message, ip, port, timeout,
+            context, socket, message, ip, port, timeout,
             [state](const auto & error)
             {
                 state->busyLock.unlock();
@@ -81,7 +80,7 @@ private:
     using Udp = boost::asio::ip::udp;
     using Socket = Udp::socket;
 
-    Networking & net;
+    asionet::Context & context;
     Socket socket;
 
     void setupSocket()

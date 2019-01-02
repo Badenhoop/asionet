@@ -11,10 +11,10 @@
 #include <boost/asio/ip/tcp.hpp>
 #include <boost/asio/connect.hpp>
 #include "Message.h"
-#include "Networking.h"
 #include "Utils.h"
 #include "Error.h"
 #include "Busyable.h"
+#include "Context.h"
 
 namespace asionet
 {
@@ -38,14 +38,14 @@ public:
 	using CallHandler = std::function<void(const error::ErrorCode & error,
 										   const std::shared_ptr<ResponseMessage> & response)>;
 
-	static Ptr create(Networking & net, std::size_t maxMessageSize = 512)
+	static Ptr create(asionet::Context & context, std::size_t maxMessageSize = 512)
 	{
-		return std::make_shared<ServiceClient<Service>>(PrivateTag{}, net, maxMessageSize);
+		return std::make_shared<ServiceClient<Service>>(PrivateTag{}, context, maxMessageSize);
 	}
 
-	ServiceClient(PrivateTag, Networking & net, std::size_t maxMessageSize)
-		: net(net)
-		  , socket(net.getIoService())
+	ServiceClient(PrivateTag, asionet::Context & context, std::size_t maxMessageSize)
+		: context(context)
+		  , socket(context)
 		  , maxMessageSize(maxMessageSize)
 	{}
 
@@ -63,14 +63,14 @@ public:
 		auto startTime = time::now();
 		newSocket();
 		// Connect to server.
-		asionet::socket::connect(net, socket, host, port, timeout);
+		asionet::socket::connect(context, socket, host, port, timeout);
 		updateTimeout(timeout, startTime);
 		// Send the request.
-		message::send(net, socket, request, timeout);
+		message::send(context, socket, request, timeout);
 		updateTimeout(timeout, startTime);
 		// Receive the response.
 		boost::asio::streambuf buffer{maxMessageSize + internal::Frame::HEADER_SIZE};
-		return message::receive<ResponseMessage>(net, socket, buffer, timeout);
+		return message::receive<ResponseMessage>(context, socket, buffer, timeout);
 	}
 
 	void asyncCall(const RequestMessage & request,
@@ -89,7 +89,7 @@ public:
 
 		// Connect to server.
 		asionet::socket::asyncConnect(
-			net, socket, host, port, state->timeout,
+			context, socket, host, port, state->timeout,
 			[state, request](const auto & error)
 			{
 				if (error)
@@ -103,7 +103,7 @@ public:
 
 				// Send the request.
 				asionet::message::asyncSend(
-					state->self->net, state->self->socket, request, state->timeout,
+					state->self->context, state->self->socket, request, state->timeout,
 					[state](const auto & error)
 					{
 						if (error)
@@ -117,7 +117,7 @@ public:
 
 						// Receive the response.
 						asionet::message::asyncReceive<ResponseMessage>(
-							state->self->net, state->self->socket, state->buffer, state->timeout,
+							state->self->context, state->self->socket, state->buffer, state->timeout,
 							[state](auto const & error, const auto & response)
 							{
 								state->handler(error, response);
@@ -165,7 +165,7 @@ private:
 		closeable::Closer <Socket> closer;
 	};
 
-	asionet::Networking & net;
+	asionet::Context & context;
 	Socket socket;
 	std::size_t maxMessageSize;
 
@@ -180,7 +180,7 @@ private:
 	void newSocket()
 	{
 		if (!socket.is_open())
-			socket = Socket(net.getIoService());
+			socket = Socket(context);
 	}
 };
 
