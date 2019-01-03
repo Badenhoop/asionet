@@ -9,6 +9,7 @@
 #include "Error.h"
 #include "Context.h"
 #include "Utils.h"
+#include "WorkSerializer.h"
 
 namespace asionet
 {
@@ -19,59 +20,59 @@ template<typename Closeable>
 class Closer
 {
 public:
-    Closer(Closeable & closeable)
-        : closeable(closeable)
-    {}
+	Closer(Closeable & closeable)
+		: closeable(closeable)
+	{}
 
-    ~Closer()
-    {
-        if (alive)
-            close(closeable);
-    }
+	~Closer()
+	{
+		if (alive)
+			close(closeable);
+	}
 
-    Closer(const Closer &) = delete;
+	Closer(const Closer &) = delete;
 
-    Closer & operator=(const Closer &) = delete;
+	Closer & operator=(const Closer &) = delete;
 
-    Closer(Closer && other)
-        : closeable(other.closeable)
-    {
-        other.alive = false;
-    }
+	Closer(Closer && other)
+		: closeable(other.closeable)
+	{
+		other.alive = false;
+	}
 
-    Closer & operator=(Closer && other)
-    {
-        closeable = other.closeable;
-        alive = other.alive;
-        other.alive = false;
-        return *this;
-    }
+	Closer & operator=(Closer && other)
+	{
+		closeable = other.closeable;
+		alive = other.alive;
+		other.alive = false;
+		return *this;
+	}
 
-    static void close(Closeable & closeable)
-    {
-        boost::system::error_code ignoredError;
-        closeable.close(ignoredError);
-    }
+	static void close(Closeable & closeable)
+	{
+		boost::system::error_code ignoredError;
+		closeable.close(ignoredError);
+	}
 
 private:
-    Closeable & closeable;
-    bool alive{true};
+	Closeable & closeable;
+	bool alive{true};
 };
 
 template<typename Closeable>
 struct IsOpen
 {
-    bool operator()(Closeable & closeable) const
-    {
-        return closeable.is_open();
-    }
+	bool operator()(Closeable & closeable) const
+	{
+		return closeable.is_open();
+	}
 };
 
 template<
-    typename ResultTuple,
-    typename AsyncOperation,
-    typename... AsyncOperationArgs,
-    typename Closeable>
+	typename ResultTuple,
+	typename AsyncOperation,
+	typename... AsyncOperationArgs,
+	typename Closeable>
 void timedOperation(ResultTuple & result,
                     asionet::Context & context,
                     AsyncOperation asyncOperation,
@@ -79,52 +80,56 @@ void timedOperation(ResultTuple & result,
                     const time::Duration & timeout,
                     AsyncOperationArgs && ... args)
 {
-    auto timer = Timer::create(context);
-    timer->startTimeout(
-        timeout,
-        [&closeable]
-        {
-            // Timeout expired: close the closeable.
-            Closer<Closeable>::close(closeable);
-        });
+	// Guarantee that the timer's handler and async operation won't run concurrently.
+	auto serializer = std::make_shared<WorkSerializer>(context);
 
-    // A 'would_block' closeableError is guaranteed to never occur on an asynchronous operation.
-    boost::system::error_code closeableError = boost::asio::error::would_block;
+	auto timer = Timer::create(context);
+	timer->startTimeout(
+		timeout,
+		(*serializer)([&closeable, serializer]
+		              {
+			              // Timeout expired: close the closeable.
+			              Closer<Closeable>::close(closeable);
+		              }));
+
+	// A 'would_block' closeableError is guaranteed to never occur on an asynchronous operation.
+	boost::system::error_code closeableError = boost::asio::error::would_block;
 	utils::WaitCondition waitCondition{[&] { return closeableError != boost::asio::error::would_block; }};
 
-    // Run asynchronous operation.
-    asyncOperation(
-        std::forward<AsyncOperationArgs>(args)...,
-        [&closeableError, &waitCondition, timer, &result](const boost::system::error_code & error, auto && ... remainingHandlerArgs)
-        {
-            timer->stop();
-            // Create a tuple to store the results.
-            result = std::make_tuple(error, remainingHandlerArgs...);
-            // Update closeableError variable and notify wait condition.
-            closeableError = error;
-	        waitCondition.variable.notify_all();
-        });
+	// Run asynchronous operation.
+	asyncOperation(
+		std::forward<AsyncOperationArgs>(args)...,
+		(*serializer)([&closeableError, &waitCondition, timer, &result](const boost::system::error_code & error,
+		                                                                auto && ... remainingHandlerArgs)
+		              {
+			              timer->stop();
+			              // Create a tuple to store the results.
+			              result = std::make_tuple(error, remainingHandlerArgs...);
+			              // Update closeableError variable and notify wait condition.
+			              closeableError = error;
+			              waitCondition.variable.notify_all();
+		              }));
 
-    // Wait until "something happens" with the closeable.
-    utils::waitUntil(context, waitCondition);
+	// Wait until "something happens" with the closeable.
+	utils::waitUntil(context, waitCondition);
 
-    // Determine whether a connection was successfully established.
-    // Even though our timer handler might have run to close the closeable, the connect operation
-    // might have notionally succeeded!
-    if (closeableError || !IsOpen<Closeable>{}(closeable))
-    {
-        if (closeableError == boost::asio::error::operation_aborted)
-            throw error::Aborted{};
+	// Determine whether a connection was successfully established.
+	// Even though our timer handler might have run to close the closeable, the connect operation
+	// might have notionally succeeded!
+	if (closeableError || !IsOpen<Closeable>{}(closeable))
+	{
+		if (closeableError == boost::asio::error::operation_aborted)
+			throw error::Aborted{};
 
-        throw error::FailedOperation{};
-    }
+		throw error::FailedOperation{};
+	}
 }
 
 template<
-    typename AsyncOperation,
-    typename... AsyncOperationArgs,
-    typename Closeable,
-    typename Handler>
+	typename AsyncOperation,
+	typename... AsyncOperationArgs,
+	typename Closeable,
+	typename Handler>
 void timedAsyncOperation(asionet::Context & context,
                          AsyncOperation asyncOperation,
                          Closeable & closeable,
@@ -132,28 +137,31 @@ void timedAsyncOperation(asionet::Context & context,
                          const Handler & handler,
                          AsyncOperationArgs && ... asyncOperationArgs)
 {
-    auto timer = Timer::create(context);
-    timer->startTimeout(
-        timeout,
-        [&closeable]
-        {
-            Closer<Closeable>::close(closeable);
-        });
+	auto serializer = std::make_shared<WorkSerializer>(context);
 
-    asyncOperation(
-        std::forward<AsyncOperationArgs>(asyncOperationArgs)...,
-        [&closeable, timer, handler](const boost::system::error_code & opError, auto && ... remainingHandlerArgs)
-        {
-            timer->stop();
+	auto timer = Timer::create(context);
+	timer->startTimeout(
+		timeout,
+		(*serializer)([&closeable]
+		              {
+			              Closer<Closeable>::close(closeable);
+		              }));
 
-            auto errorCode = error::codes::SUCCESS;
-            if (!IsOpen<Closeable>{}(closeable))
-                errorCode = error::codes::ABORTED;
-            else if (opError)
-                errorCode = error::codes::FAILED_OPERATION;
+	asyncOperation(
+		std::forward<AsyncOperationArgs>(asyncOperationArgs)...,
+		(*serializer)(
+			[&closeable, timer, handler](const boost::system::error_code & opError, auto && ... remainingHandlerArgs)
+			{
+				timer->stop();
 
-            handler(errorCode, opError, std::forward<decltype(remainingHandlerArgs)>(remainingHandlerArgs)...);
-        });
+				auto errorCode = error::codes::SUCCESS;
+				if (!IsOpen<Closeable>{}(closeable))
+					errorCode = error::codes::ABORTED;
+				else if (opError)
+					errorCode = error::codes::FAILED_OPERATION;
+
+				handler(errorCode, opError, std::forward<decltype(remainingHandlerArgs)>(remainingHandlerArgs)...);
+			}));
 }
 
 }
