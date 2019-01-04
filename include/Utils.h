@@ -83,29 +83,6 @@ inline std::string stringFromStreambuf(boost::asio::streambuf & streambuf, std::
 	return data;
 }
 
-template<class T>
-class Monitor
-{
-private:
-	mutable T t;
-	mutable std::mutex mutex;
-
-public:
-	using Type = T;
-
-	Monitor() = default;
-
-	explicit Monitor(T t) : t(std::move(t))
-	{}
-
-	template<typename F>
-	auto operator()(F f) const -> decltype(f(t))
-	{
-		std::lock_guard<std::mutex> lock{mutex};
-		return f(t);
-	}
-};
-
 }
 }
 

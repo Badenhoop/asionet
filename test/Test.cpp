@@ -253,7 +253,7 @@ void testAsyncDatagramReceiver()
 
     sleep(1);
 
-    sender->send(PlatoonMessage::followerRequest(42), "127.0.0.1", 10000, 5s);
+    sender->asyncSend(std::make_shared<PlatoonMessage>(PlatoonMessage::followerRequest(42)), "127.0.0.1", 10000, 5s);
 
     while (running);
 }
@@ -356,7 +356,7 @@ void testDatagramSenderAsyncSend()
         });
 
     sender->asyncSend(
-        PlatoonMessage::acceptResponse(1, 42), "127.0.0.1", 10000, 1s,
+        std::make_shared<PlatoonMessage>(PlatoonMessage::acceptResponse(1, 42)), "127.0.0.1", 10000, 1s,
         [](const auto & error)
         {
             if (error)
@@ -364,6 +364,66 @@ void testDatagramSenderAsyncSend()
         });
 
     while (running);
+}
+
+void testDatagramSenderQueuedSending()
+{
+	using namespace protocol;
+	Context context;
+	Worker worker{context};
+
+	auto receiver = DatagramReceiver<PlatoonMessage>::create(context, 10000);
+	auto sender = DatagramSender<PlatoonMessage>::create(context);
+
+	std::atomic<bool> running{true};
+	std::atomic<std::size_t> receivedMessages{0};
+	constexpr std::size_t sentMessages{10};
+
+	DatagramReceiver<PlatoonMessage>::ReceiveHandler receiveHandler = [&](const auto & error, auto & message, const std::string & senderHost, auto senderPort)
+	{
+		if (error)
+		{
+			std::cout << "FAILED! (receive error)\n";
+			running = false;
+			return;
+		}
+
+		auto i = message->getPlatoonId();
+
+		if (i != receivedMessages)
+		{
+			std::cout << "FAILED! (incorrect order)\n";
+			running = false;
+			return;
+		}
+
+		std::cout << "Received message #" << i << "\n";
+
+        receivedMessages++;
+        if (receivedMessages == sentMessages)
+        {
+            std::cout << "SUCCESS\n";
+            running = false;
+            return;
+        }
+
+		receiver->asyncReceive(1s, receiveHandler);
+	};
+
+	receiver->asyncReceive(1s, receiveHandler);
+
+	for (std::size_t i = 0; i < sentMessages; ++i)
+	{
+		sender->asyncSend(
+			std::make_shared<PlatoonMessage>(PlatoonMessage::acceptResponse(1, i)), "127.0.0.1", 10000, 1s,
+			[](const auto & error)
+			{
+				if (error)
+					std::cout << "FAILED! (send error)\n";
+			});
+	}
+
+	while (running);
 }
 
 void testResolver()
@@ -430,7 +490,7 @@ void testStringMessageOverDatagram()
 
     sleep(1);
 
-    sender->send("Hello World!", "127.0.0.1", 10000, 3s);
+    sender->asyncSend(std::make_shared<std::string>("Hello World!"), "127.0.0.1", 10000, 3s);
 
     while (running);
     receiverThread.join();
@@ -612,7 +672,7 @@ void testDatagramReceiverMaxMessageSize()
             running = false;
         });
 
-    sender->send(std::string(200, 'a'), "127.0.0.1", 10000, 1s);
+    sender->asyncSend(std::make_shared<std::string>(std::string(200, 'a')), "127.0.0.1", 10000, 1s);
 
     while (running);
 
@@ -637,7 +697,7 @@ void testDatagramReceiverMaxMessageSize()
         }};
 
     sleep(1);
-    sender->send(std::string(200, 'a'), "127.0.0.1", 10000, 1s);
+    sender->asyncSend(std::make_shared<std::string>(std::string(200, 'a')), "127.0.0.1", 10000, 1s);
 
     while (running);
     receiveThread.join();
@@ -653,7 +713,7 @@ void testNonCopyableMessage()
         Worker worker{context};
         auto sender = DatagramSender<NonCopyableMessage>::create(context);
         auto receiver = DatagramReceiver<NonCopyableMessage>::create(context, 10000);
-        sender->send(NonCopyableMessage{}, "127.0.0.1", 10000, 0s);
+        sender->asyncSend(std::make_shared<NonCopyableMessage>(), "127.0.0.1", 10000, 0s);
         std::string host;
         std::uint16_t port;
         auto message = receiver->receive(host, port, 0s);

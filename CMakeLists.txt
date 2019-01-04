@@ -32,7 +32,9 @@ set(SOURCE_FILES
         include/Busyable.h
         include/Worker.h
         include/WorkerPool.h
-        include/WorkSerializer.h)
+        include/WorkSerializer.h
+        include/QueuedExecutor.h
+        include/Monitor.h)
 
 ########################
 # Test Executable Target

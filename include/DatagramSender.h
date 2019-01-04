@@ -5,10 +5,10 @@
 #ifndef NETWORKINGLIB_DATAGRAMSENDER_H
 #define NETWORKINGLIB_DATAGRAMSENDER_H
 
-#include <queue>
 #include "Stream.h"
 #include "Message.h"
 #include "Utils.h"
+#include "QueuedExecutor.h"
 
 namespace asionet
 {
@@ -35,41 +35,25 @@ public:
 	DatagramSender(PrivateTag, asionet::Context & context)
 		: context(context)
 		  , socket(context)
+		  , queuedExecutor(utils::QueuedExecutor::create(context))
 	{}
 
 	void asyncSend(std::shared_ptr<Message> message,
 	               const std::string & ip,
 	               std::uint16_t port,
 	               const time::Duration & timeout,
-	               const SendHandler & handler)
+	               const SendHandler & handler = [](auto && ...) {})
 	{
-		handlerQueueMonitor(
-			[&](auto & handlerQueue)
-			{
-				if (handlerQueue.empty())
-				{
-					asyncOperation(message, ip, port, timeout, handler);
-					return;
-				}
-
-				auto self = this->shared_from_this();
-				handlerQueue.push(
-					[self, message, ip, port, timeout, handler]
-					{
-						self->asyncOperation(message, ip, port, timeout, handler);
-					});
-			});
+		auto self = this->shared_from_this();
+		auto asyncOperation = [self](auto && ... args)
+		{ self->asyncSendOperation(std::forward<decltype(args)>(args)...); };
+		queuedExecutor->execute(asyncOperation, handler, message, ip, port, timeout);
 	}
 
 	void stop()
 	{
 		closeable::Closer<Socket>::close(socket);
-
-		handlerQueueMonitor(
-			[&](auto & handlerQueue)
-			{
-				handlerQueue = std::queue<std::function<void()>>;
-			});
+		queuedExecutor->reset();
 	}
 
 private:
@@ -78,32 +62,22 @@ private:
 
 	asionet::Context & context;
 	Socket socket;
-	utils::Monitor <std::queue<std::function<void()>>> handlerQueueMonitor;
+	utils::QueuedExecutor::Ptr queuedExecutor;
 
-	void asyncOperation(std::shared_ptr<Message> message,
-	                    const std::string & ip,
-	                    std::uint16_t port,
-	                    const time::Duration & timeout,
-	                    const SendHandler & handler)
+	void asyncSendOperation(const SendHandler & handler,
+	                        std::shared_ptr<Message> message,
+	                        const std::string & ip,
+	                        std::uint16_t port,
+	                        const time::Duration & timeout)
 	{
 		auto self = this->shared_from_this();
 		setupSocket();
 
 		asionet::message::asyncSendDatagram(
-			context, socket, message, ip, port, timeout,
+			context, socket, *message, ip, port, timeout,
 			[self, handler](const auto & error)
 			{
 				handler(error);
-
-				self->handlerQueueMonitor(
-					[&](auto & handlerQueue)
-					{
-						if (!handlerQueue.empty())
-						{
-							auto nextOperation = handlerQueue.pop();
-							self->context.post(nextOperation);
-						}
-					});
 			});
 	}
 

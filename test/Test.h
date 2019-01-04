@@ -48,6 +48,8 @@ void testServiceClientAsyncCallTimeout();
 
 void testDatagramSenderAsyncSend();
 
+void testDatagramSenderQueuedSending();
+
 void testResolver();
 
 void testStringMessageOverDatagram();
@@ -80,14 +82,14 @@ template<>
 struct Encoder<asionet::test::NonCopyableMessage>
 {
     std::shared_ptr<std::string> operator()(const asionet::test::NonCopyableMessage & message) const
-    {}
+    { return std::make_shared<std::string>(""); }
 };
 
 template<>
 struct Decoder<asionet::test::NonCopyableMessage>
 {
     std::shared_ptr<asionet::test::NonCopyableMessage> operator()(const std::string & data) const
-    {}
+    { return std::make_shared<asionet::test::NonCopyableMessage>(); }
 };
 
 }

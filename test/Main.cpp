@@ -26,6 +26,8 @@ int main(int argc, char ** argv)
     asionet::test::testServiceClientAsyncCallTimeout();
     std::cout << "\ntestDatagramSenderAsyncSend\n\n";
     asionet::test::testDatagramSenderAsyncSend();
+    std::cout << "\ntestDatagramSenderQueuedSending\n\n";
+    asionet::test::testDatagramSenderQueuedSending();
     std::cout << "\ntestResolver\n\n";
     asionet::test::testResolver();
     std::cout << "\ntestStringMessageOverDatagram\n\n";
