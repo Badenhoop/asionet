@@ -93,7 +93,7 @@ public:
 
 	}
 
-	void reset()
+	void clear()
 	{
 		operationQueue(
 			[&](auto & queue)

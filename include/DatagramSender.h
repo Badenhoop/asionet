@@ -53,7 +53,7 @@ public:
 	void stop()
 	{
 		closeable::Closer<Socket>::close(socket);
-		queuedExecutor->reset();
+		queuedExecutor->clear();
 	}
 
 private:

@@ -86,13 +86,15 @@ void testAsyncServices()
 
     std::atomic<std::size_t> pending{5};
     std::atomic<std::size_t> correct{0};
+    std::atomic<bool> calling{false};
 
     auto client = ServiceClient<PlatoonService>::create(context);
     for (int i = 0; i < 5; i++)
     {
+        calling = true;
         client->asyncCall(
             PlatoonMessage::followerRequest(2), "127.0.0.1", 10001, 1s,
-            [&pending, &correct](const auto & error, const auto & response)
+            [&](const auto & error, const auto & response)
             {
                 if (error)
                     std::cout << "FAILED!\n";
@@ -106,9 +108,10 @@ void testAsyncServices()
                 }
 
                 pending--;
+                calling = false;
             });
 
-        while (client->isCalling());
+        while (calling);
     }
 
     while (pending > 0);

@@ -15,6 +15,7 @@
 #include "Error.h"
 #include "Busyable.h"
 #include "Context.h"
+#include "QueuedExecutor.h"
 
 namespace asionet
 {
@@ -47,6 +48,7 @@ public:
 		: context(context)
 		  , socket(context)
 		  , maxMessageSize(maxMessageSize)
+		  , queuedExecutor(utils::QueuedExecutor::create(context))
 	{}
 
 	std::shared_ptr<ResponseMessage> call(const RequestMessage & request,
@@ -78,6 +80,58 @@ public:
 	               std::uint16_t port,
 	               const time::Duration & timeout,
 	               const CallHandler & handler)
+	{
+		auto self = this->shared_from_this();
+		auto asyncOperation = [self](auto && ... args)
+		{ self->asyncCallOperation(std::forward<decltype(args)>(args)...); };
+		queuedExecutor->execute(asyncOperation, handler, request, host, port, timeout);
+	}
+
+	void stop()
+	{
+		closeable::Closer<Socket>::close(socket);
+		queuedExecutor->clear();
+	}
+
+private:
+	using Socket = boost::asio::ip::tcp::socket;
+	using Frame = asionet::internal::Frame;
+
+	// We must keep track of some variables during the async handler chain.
+	struct AsyncState
+	{
+		AsyncState(Ptr self,
+		           const CallHandler & handler,
+		           time::Duration timeout,
+		           time::TimePoint startTime)
+			: busyLock(*self)
+			  , self(self)
+			  , handler(handler)
+			  , timeout(timeout)
+			  , startTime(startTime)
+			  , buffer(self->maxMessageSize + Frame::HEADER_SIZE)
+			  , closer(self->socket)
+		{}
+
+		BusyLock busyLock;
+		Ptr self;
+		CallHandler handler;
+		time::Duration timeout;
+		time::TimePoint startTime;
+		boost::asio::streambuf buffer;
+		closeable::Closer <Socket> closer;
+	};
+
+	asionet::Context & context;
+	Socket socket;
+	std::size_t maxMessageSize;
+	utils::QueuedExecutor::Ptr queuedExecutor;
+
+	void asyncCallOperation(const CallHandler & handler,
+	                    const RequestMessage & request,
+	                    const std::string & host,
+	                    std::uint16_t port,
+	                    const time::Duration & timeout)
 	{
 		auto self = this->shared_from_this();
 		// Container for our variables which are needed for the subsequent asynchronous calls to connect, receive and send.
@@ -125,49 +179,6 @@ public:
 					});
 			});
 	}
-
-	bool isCalling() const noexcept
-	{
-		return isBusy();
-	}
-
-	void stop()
-	{
-		closeable::Closer<Socket>::close(socket);
-	}
-
-private:
-	using Socket = boost::asio::ip::tcp::socket;
-	using Frame = asionet::internal::Frame;
-
-	// We must keep track of some variables during the async handler chain.
-	struct AsyncState
-	{
-		AsyncState(Ptr self,
-		           const CallHandler & handler,
-		           time::Duration timeout,
-		           time::TimePoint startTime)
-			: busyLock(*self)
-			  , self(self)
-			  , handler(handler)
-			  , timeout(timeout)
-			  , startTime(startTime)
-			  , buffer(self->maxMessageSize + Frame::HEADER_SIZE)
-			  , closer(self->socket)
-		{}
-
-		BusyLock busyLock;
-		Ptr self;
-		CallHandler handler;
-		time::Duration timeout;
-		time::TimePoint startTime;
-		boost::asio::streambuf buffer;
-		closeable::Closer <Socket> closer;
-	};
-
-	asionet::Context & context;
-	Socket socket;
-	std::size_t maxMessageSize;
 
 	static void updateTimeout(time::Duration & timeout, time::TimePoint & startTime)
 	{
