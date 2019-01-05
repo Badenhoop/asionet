@@ -14,42 +14,6 @@ namespace utils
 
 using Condition = std::function<bool()>;
 
-struct WaitCondition
-{
-	explicit WaitCondition(const Condition & condition)
-		: condition(condition)
-	{}
-
-	std::mutex mutex;
-	std::condition_variable variable;
-	Condition condition;
-};
-
-inline void waitUntil(asionet::Context & context, WaitCondition & waitCondition)
-{
-	// This one is quite tricky:
-	// We want to wait until the condition becomes true.
-	// So during our waiting, we have to run context. But there are two cases to consider:
-	// We were called from an ioService handler and therefor from the context-thread:
-	//      In this case we must invoke context.run_one() to ensure that further handlers can be invoked.
-	// Else we were not called from the context-thread:
-	//      Since we must not call context.run_one() from a different thread (since we assume context.run() permanently
-	//      runs already on the context-thread, we just wait until the error changed "magically".
-	if (context.get_executor().running_in_this_thread())
-	{
-		while (!context.stopped() && !waitCondition.condition())
-			context.run_one();
-	}
-	else
-	{
-		std::unique_lock<std::mutex> lock{waitCondition.mutex};
-		while (!context.stopped() && !waitCondition.condition())
-		{
-			waitCondition.variable.wait(lock);
-		}
-	}
-}
-
 template<std::size_t numBytes, typename Int>
 inline void toBigEndian(std::uint8_t * dest, Int src)
 {

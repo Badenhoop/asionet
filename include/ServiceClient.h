@@ -23,7 +23,6 @@ namespace asionet
 template<typename Service>
 class ServiceClient
 	: public std::enable_shared_from_this<ServiceClient<Service>>
-	  , public Busyable
 {
 private:
 	struct PrivateTag
@@ -50,30 +49,6 @@ public:
 		  , maxMessageSize(maxMessageSize)
 		  , queuedExecutor(utils::QueuedExecutor::create(context))
 	{}
-
-	std::shared_ptr<ResponseMessage> call(const RequestMessage & request,
-	                                      const std::string & host,
-	                                      std::uint16_t port,
-	                                      time::Duration timeout)
-	{
-		BusyLock busyLock{*this};
-		// Close the socket on leaving.
-		closeable::Closer<Socket> socketCloser{socket};
-
-		// We have three places to lose time: connecting, sending and receiving.
-		// So after each operation we subtract the time spend from our timeout.
-		auto startTime = time::now();
-		newSocket();
-		// Connect to server.
-		asionet::socket::connect(context, socket, host, port, timeout);
-		updateTimeout(timeout, startTime);
-		// Send the request.
-		message::send(context, socket, request, timeout);
-		updateTimeout(timeout, startTime);
-		// Receive the response.
-		boost::asio::streambuf buffer{maxMessageSize + internal::Frame::HEADER_SIZE};
-		return message::receive<ResponseMessage>(context, socket, buffer, timeout);
-	}
 
 	void asyncCall(const RequestMessage & request,
 	               const std::string & host,
@@ -104,8 +79,7 @@ private:
 		           const CallHandler & handler,
 		           time::Duration timeout,
 		           time::TimePoint startTime)
-			: busyLock(*self)
-			  , self(self)
+			: self(self)
 			  , handler(handler)
 			  , timeout(timeout)
 			  , startTime(startTime)
@@ -113,7 +87,6 @@ private:
 			  , closer(self->socket)
 		{}
 
-		BusyLock busyLock;
 		Ptr self;
 		CallHandler handler;
 		time::Duration timeout;

@@ -30,8 +30,6 @@ public:
     NonCopyableMessage & operator=(NonCopyableMessage &&) = delete;
 };
 
-void testSyncServices();
-
 void testAsyncServices();
 
 void testTcpClientTimeout();

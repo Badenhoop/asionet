@@ -34,7 +34,9 @@ set(SOURCE_FILES
         include/WorkerPool.h
         include/WorkSerializer.h
         include/QueuedExecutor.h
-        include/Monitor.h)
+        include/Monitor.h
+        include/Wait.h
+        src/Wait.cpp)
 
 ########################
 # Test Executable Target

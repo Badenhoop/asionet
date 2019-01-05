@@ -10,6 +10,7 @@
 #include "Context.h"
 #include "Utils.h"
 #include "WorkSerializer.h"
+#include "Wait.h"
 
 namespace asionet
 {
@@ -20,7 +21,7 @@ template<typename Closeable>
 class Closer
 {
 public:
-	Closer(Closeable & closeable)
+	explicit Closer(Closeable & closeable)
 		: closeable(closeable)
 	{}
 
@@ -94,24 +95,22 @@ void timedOperation(ResultTuple & result,
 
 	// A 'would_block' closeableError is guaranteed to never occur on an asynchronous operation.
 	boost::system::error_code closeableError = boost::asio::error::would_block;
-	utils::WaitCondition waitCondition{[&] { return closeableError != boost::asio::error::would_block; }};
+
+	Waiter waiter{context};
+	Waitable waitable{waiter};
 
 	// Run asynchronous operation.
 	asyncOperation(
 		std::forward<AsyncOperationArgs>(args)...,
-		(*serializer)([&closeableError, &waitCondition, timer, &result](const boost::system::error_code & error,
-		                                                                auto && ... remainingHandlerArgs)
-		              {
-			              timer->stop();
-			              // Create a tuple to store the results.
-			              result = std::make_tuple(error, remainingHandlerArgs...);
-			              // Update closeableError variable and notify wait condition.
-			              closeableError = error;
-			              waitCondition.variable.notify_all();
-		              }));
+		waitable((*serializer)([&closeableError, timer, &result](const boost::system::error_code & error,
+		                                                         auto && ... remainingHandlerArgs)
+		                       {
+			                       timer->stop();
+			                       // Create a tuple to store the results.
+			                       result = std::make_tuple(error, remainingHandlerArgs...);
+		                       })));
 
-	// Wait until "something happens" with the closeable.
-	utils::waitUntil(context, waitCondition);
+	waiter.await(waitable);
 
 	// Determine whether a connection was successfully established.
 	// Even though our timer handler might have run to close the closeable, the connect operation
