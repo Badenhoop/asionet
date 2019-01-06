@@ -87,7 +87,7 @@ public:
 				}
 
 				queue.push(
-					[asyncOperation, wrappedHandler, asyncOperationArgs...]
+					[asyncOperation, wrappedHandler, asyncOperationArgs...] () mutable
 					{
 						asyncOperation(wrappedHandler, asyncOperationArgs...);
 					}

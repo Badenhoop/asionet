@@ -11,6 +11,7 @@
 #include "Utils.h"
 #include "Busyable.h"
 #include "Context.h"
+#include "QueuedExecutor.h"
 
 namespace asionet
 {
@@ -61,7 +62,6 @@ private:
 
 class Resolver
     : public std::enable_shared_from_this<Resolver>
-      , private Busyable
 {
 private:
     struct PrivateTag
@@ -91,6 +91,7 @@ public:
     Resolver(PrivateTag, asionet::Context & context)
         : context(context)
           , resolver(context)
+          , queuedExecutor(utils::QueuedExecutor::create(context))
     {}
 
     void asyncResolve(const std::string & host,
@@ -98,9 +99,32 @@ public:
                       const time::Duration & timeout,
                       const ResolveHandler & handler)
     {
-        auto self = shared_from_this();
-        auto state = std::make_shared<AsyncState>(self, handler);
+        auto self = this->shared_from_this();
+        auto asyncOperation = [self](auto && ... args)
+        { self->asyncResolveOperation(std::forward<decltype(args)>(args)...); };
+        queuedExecutor->execute(asyncOperation, handler, host, service, timeout);
+    }
 
+    void stop()
+    {
+        closeable::Closer<UnderlyingResolver>::close(resolver);
+        queuedExecutor->clear();
+    }
+
+private:
+    using Protocol = boost::asio::ip::tcp;
+    using UnderlyingResolver = internal::CloseableResolver<Protocol>;
+
+    asionet::Context & context;
+    UnderlyingResolver resolver;
+    utils::QueuedExecutor::Ptr queuedExecutor;
+
+    void asyncResolveOperation(const ResolveHandler & handler,
+                               const std::string & host,
+                               const std::string & service,
+                               const time::Duration & timeout)
+    {
+        auto self = shared_from_this();
         resolver.open();
 
         UnderlyingResolver::Query query{host, service};
@@ -113,30 +137,12 @@ public:
             resolveOperation,
             resolver,
             timeout,
-            [state](const auto & networkingError, const auto & boostError, auto endpointIterator)
+            [self, handler](const auto & networkingError, const auto & boostError, auto endpointIterator)
             {
-                state->busyLock.unlock();
-                state->handler(networkingError, state->self->endpointsFromIterator(endpointIterator));
+                handler(networkingError, self->endpointsFromIterator(endpointIterator));
             },
             query);
     }
-
-    void stop()
-    {
-        closeable::Closer<UnderlyingResolver>::close(resolver);
-    }
-
-    bool isResolving() const noexcept
-    {
-        return isBusy();
-    }
-
-private:
-    using Protocol = boost::asio::ip::tcp;
-    using UnderlyingResolver = internal::CloseableResolver<Protocol>;
-
-    asionet::Context & context;
-    UnderlyingResolver resolver;
 
     std::vector<Endpoint> endpointsFromIterator(UnderlyingResolver::Iterator iterator)
     {
@@ -151,19 +157,6 @@ private:
 
         return endpoints;
     }
-
-    struct AsyncState
-    {
-        AsyncState(Ptr self, const ResolveHandler & handler)
-            : busyLock(*self)
-              , self(self)
-              , handler(handler)
-        {}
-
-        BusyLock busyLock;
-        Ptr self;
-        ResolveHandler handler;
-    };
 };
 
 }

@@ -75,11 +75,11 @@ namespace message
 template<>
 struct Encoder<protocol::PlatoonMessage>
 {
-    std::shared_ptr<std::string> operator()(const protocol::PlatoonMessage & message) const
+    void operator()(const protocol::PlatoonMessage & message, std::string & data) const
     {
         using namespace protocol;
 
-        auto data = std::string(9, '\0');
+        data = std::string(9, '\0');
 
         auto vehicleId = message.getVehicleId();
         auto messageType = message.getMessageType();
@@ -94,8 +94,6 @@ struct Encoder<protocol::PlatoonMessage>
         data[6] = (std::uint8_t) ((platoonId & 0x0000ff00) >> 8);
         data[7] = (std::uint8_t) ((platoonId & 0x00ff0000) >> 16);
         data[8] = (std::uint8_t) ((platoonId & 0xff000000) >> 24);
-
-        return std::make_shared<std::string>(data);
     }
 };
 

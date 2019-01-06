@@ -38,16 +38,24 @@ public:
 		  , queuedExecutor(utils::QueuedExecutor::create(context))
 	{}
 
-	void asyncSend(std::shared_ptr<Message> message,
+	void asyncSend(const Message & message,
 	               const std::string & ip,
 	               std::uint16_t port,
 	               const time::Duration & timeout,
 	               const SendHandler & handler = [](auto && ...) {})
 	{
+		auto data = std::make_shared<std::string>();
+		if (!message::internal::encode(message, *data))
+		{
+			context.post(
+				[handler] { handler(error::codes::ENCODING); });
+			return;
+		}
+
 		auto self = this->shared_from_this();
 		auto asyncOperation = [self](auto && ... args)
 		{ self->asyncSendOperation(std::forward<decltype(args)>(args)...); };
-		queuedExecutor->execute(asyncOperation, handler, message, ip, port, timeout);
+		queuedExecutor->execute(asyncOperation, handler, std::move(data), ip, port, timeout);
 	}
 
 	void stop()
@@ -65,7 +73,7 @@ private:
 	utils::QueuedExecutor::Ptr queuedExecutor;
 
 	void asyncSendOperation(const SendHandler & handler,
-	                        std::shared_ptr<Message> message,
+	                        const std::shared_ptr<std::string> & data,
 	                        const std::string & ip,
 	                        std::uint16_t port,
 	                        const time::Duration & timeout)
@@ -73,12 +81,9 @@ private:
 		auto self = this->shared_from_this();
 		setupSocket();
 
-		asionet::message::asyncSendDatagram(
-			context, socket, *message, ip, port, timeout,
-			[self, handler](const auto & error)
-			{
-				handler(error);
-			});
+		asionet::socket::asyncSendTo(
+			context, socket, *data, ip, port, timeout,
+			[self, handler, data](const auto & error) { handler(error); });
 	}
 
 	void setupSocket()

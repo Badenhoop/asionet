@@ -50,16 +50,28 @@ public:
 		  , queuedExecutor(utils::QueuedExecutor::create(context))
 	{}
 
-	void asyncCall(std::shared_ptr<RequestMessage> request,
+	void asyncCall(const RequestMessage & request,
 	               const std::string & host,
 	               std::uint16_t port,
 	               const time::Duration & timeout,
 	               const CallHandler & handler)
 	{
+		auto sendData = std::make_shared<std::string>();
+		if (!message::internal::encode(request, *sendData))
+		{
+			context.post(
+				[handler]
+				{
+					std::shared_ptr<ResponseMessage> noResponse;
+					handler(error::codes::ENCODING, noResponse);
+				});
+			return;
+		}
+
 		auto self = this->shared_from_this();
 		auto asyncOperation = [self](auto && ... args)
 		{ self->asyncCallOperation(std::forward<decltype(args)>(args)...); };
-		queuedExecutor->execute(asyncOperation, handler, request, host, port, timeout);
+		queuedExecutor->execute(asyncOperation, handler, sendData, host, port, timeout);
 	}
 
 	void stop()
@@ -77,10 +89,12 @@ private:
 	{
 		AsyncState(Ptr self,
 		           const CallHandler & handler,
+		           std::shared_ptr<std::string> & sendData,
 		           time::Duration timeout,
 		           time::TimePoint startTime)
 			: self(self)
 			  , handler(handler)
+			  , sendData(std::move(sendData))
 			  , timeout(timeout)
 			  , startTime(startTime)
 			  , buffer(self->maxMessageSize + Frame::HEADER_SIZE)
@@ -89,6 +103,7 @@ private:
 
 		Ptr self;
 		CallHandler handler;
+		std::shared_ptr<std::string> sendData;
 		time::Duration timeout;
 		time::TimePoint startTime;
 		boost::asio::streambuf buffer;
@@ -101,7 +116,7 @@ private:
 	utils::QueuedExecutor::Ptr queuedExecutor;
 
 	void asyncCallOperation(const CallHandler & handler,
-		                    std::shared_ptr<RequestMessage> request,
+		                    std::shared_ptr<std::string> & sendData,
 		                    const std::string & host,
 		                    std::uint16_t port,
 		                    const time::Duration & timeout)
@@ -110,14 +125,14 @@ private:
 		// Container for our variables which are needed for the subsequent asynchronous calls to connect, receive and send.
 		// When 'state' goes out of scope, it does cleanup.
 		auto state = std::make_shared<AsyncState>(
-			self, handler, timeout, time::now());
+			self, handler, sendData, timeout, time::now());
 
 		newSocket();
 
 		// Connect to server.
 		asionet::socket::asyncConnect(
 			context, socket, host, port, state->timeout,
-			[state, request](const auto & error)
+			[state](const auto & error)
 			{
 				if (error)
 				{
@@ -129,8 +144,8 @@ private:
 				ServiceClient<Service>::updateTimeout(state->timeout, state->startTime);
 
 				// Send the request.
-				asionet::message::asyncSend(
-					state->self->context, state->self->socket, *request, state->timeout,
+				asionet::stream::asyncWrite(
+					state->self->context, state->self->socket, *state->sendData, state->timeout,
 					[state](const auto & error)
 					{
 						if (error)

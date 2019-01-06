@@ -39,8 +39,8 @@ struct Encoder;
 template<>
 struct Encoder<std::string>
 {
-	std::shared_ptr<std::string> operator()(const std::string & message) const
-	{ return std::make_shared<std::string>(message); }
+	void operator()(const std::string & message, std::string & data) const
+	{ data = message; }
 };
 
 template<typename Message>
@@ -57,11 +57,11 @@ namespace internal
 {
 
 template<typename Message>
-bool encode(const Message & message, std::shared_ptr<std::string> & data)
+bool encode(const Message & message, std::string & data)
 {
 	try
 	{
-		data = Encoder<Message>{}(message);
+		Encoder<Message>{}(message, data);
 		return true;
 	}
 	catch (...)
@@ -93,8 +93,8 @@ void asyncSend(asionet::Context & context,
                const time::Duration & timeout,
                const SendHandler & handler)
 {
-	std::shared_ptr<std::string> data;
-	if (!internal::encode(message, data))
+	auto data = std::make_shared<std::string>();
+	if (!internal::encode(message, *data))
 	{
 		context.post(
 			[handler] { handler(error::codes::ENCODING); });
@@ -102,7 +102,7 @@ void asyncSend(asionet::Context & context,
 	}
 
 	asionet::stream::asyncWrite(
-		context, stream, data, timeout,
+		context, stream, *data, timeout,
 		[handler, data](const auto & errorCode) { handler(errorCode); });
 };
 
@@ -136,8 +136,8 @@ void asyncSendDatagram(asionet::Context & context,
                        const time::Duration & timeout,
                        const SendToHandler & handler)
 {
-	std::shared_ptr<std::string> data;
-	if (!internal::encode(message, data))
+	auto data = std::make_shared<std::string>();
+	if (!internal::encode(message, *data))
 	{
 		context.post(
 			[handler] { handler(error::codes::ENCODING); });
@@ -145,7 +145,7 @@ void asyncSendDatagram(asionet::Context & context,
 	}
 
 	asionet::socket::asyncSendTo(
-		context, socket, data, host, port, timeout,
+		context, socket, *data, host, port, timeout,
 		[handler, data](const auto & error) { handler(error); });
 }
 

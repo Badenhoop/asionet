@@ -36,18 +36,18 @@ using ReadHandler = std::function<void(const error::ErrorCode & error, std::stri
 template<typename SyncWriteStream>
 void asyncWrite(asionet::Context & context,
                 SyncWriteStream & stream,
-                std::shared_ptr<std::string> writeData,
+                const std::string & writeData,
                 const time::Duration & timeout,
                 const WriteHandler & handler)
 {
     using namespace asionet::internal;
-    auto frame = std::make_shared<Frame>((const std::uint8_t *) writeData->c_str(), writeData->size());
+    auto frame = std::make_shared<Frame>((const std::uint8_t *) writeData.c_str(), writeData.size());
 
     auto asyncOperation = [](auto && ... args) { boost::asio::async_write(std::forward<decltype(args)>(args)...); };
 
     closeable::timedAsyncOperation(
         context, asyncOperation, stream, timeout,
-        [handler, frame, writeData](const auto & networkingError, const auto & boostError, auto numBytesTransferred)
+        [handler, frame](const auto & networkingError, const auto & boostError, auto numBytesTransferred)
         {
             if (numBytesTransferred < frame->getSize())
             {

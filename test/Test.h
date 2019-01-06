@@ -79,8 +79,8 @@ namespace message
 template<>
 struct Encoder<asionet::test::NonCopyableMessage>
 {
-    std::shared_ptr<std::string> operator()(const asionet::test::NonCopyableMessage & message) const
-    { return std::make_shared<std::string>(""); }
+    void operator()(const asionet::test::NonCopyableMessage & message, std::string & data) const
+    { data = ""; }
 };
 
 template<>
