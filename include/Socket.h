@@ -43,43 +43,6 @@ using ReceiveHandler = std::function<void(const error::ErrorCode & error,
                                           std::uint16_t port)>;
 
 template<typename SocketService>
-void connect(asionet::Context & context,
-             SocketService & socket,
-             const std::string & host,
-             std::uint16_t port,
-             time::Duration timeout)
-{
-    using namespace asionet::internal;
-    using Resolver = CloseableResolver<boost::asio::ip::tcp>;
-
-    auto startTime = time::now();
-
-    // Resolve host.
-    Resolver resolver{context};
-    Resolver::Query query{host, std::to_string(port)};
-
-    auto resolveOperation = [&resolver](auto && ... args)
-    { resolver.async_resolve(std::forward<decltype(args)>(args)...); };
-
-    std::tuple<boost::system::error_code, Resolver::Iterator> resolveResult;
-    closeable::timedOperation(
-        resolveResult, context, resolveOperation, resolver, timeout, query);
-
-    auto endpointIterator = std::get<1>(resolveResult);
-
-    // Update timeout.
-    auto timeSpend = time::now() - startTime;
-    timeout -= timeSpend;
-
-    auto connectOperation = [](auto && ... args)
-    { boost::asio::async_connect(std::forward<decltype(args)>(args)...); };
-
-    std::tuple<boost::system::error_code, Resolver::Iterator> connectResult;
-    closeable::timedOperation(
-        connectResult, context, connectOperation, socket, timeout, socket, endpointIterator);
-}
-
-template<typename SocketService>
 void asyncConnect(asionet::Context & context,
                   SocketService & socket,
                   const std::string & host,
@@ -129,32 +92,6 @@ void asyncConnect(asionet::Context & context,
 }
 
 template<typename DatagramSocket>
-void sendTo(asionet::Context & context,
-            DatagramSocket & socket,
-            const std::string & sendData,
-            const std::string & host,
-            std::uint16_t port,
-            const time::Duration & timeout)
-{
-    using namespace boost::asio::ip;
-    udp::endpoint endpoint{address::from_string(host), port};
-
-    using namespace asionet::internal;
-    Frame buffer{(const std::uint8_t *) sendData.c_str(), (std::uint32_t) sendData.size()};
-
-    auto asyncOperation = [&socket](auto && ... args)
-    { socket.async_send_to(std::forward<decltype(args)>(args)...); };
-
-    std::tuple<boost::system::error_code, std::size_t> result;
-    closeable::timedOperation(
-        result, context, asyncOperation, socket, timeout, buffer.getBuffers(), endpoint);
-
-    auto numBytesTransferred = std::get<1>(result);
-    if (numBytesTransferred < buffer.getSize())
-        throw error::FailedOperation{};
-};
-
-template<typename DatagramSocket>
 void asyncSendTo(asionet::Context & context,
                  DatagramSocket & socket,
                  std::shared_ptr<std::string> sendData,
@@ -188,34 +125,6 @@ void asyncSendTo(asionet::Context & context,
         },
         buffer->getBuffers(), endpoint);
 };
-
-template<typename DatagramSocket>
-std::string receiveFrom(asionet::Context & context,
-                        DatagramSocket & socket,
-                        std::vector<char> buffer,
-                        std::string & senderHost,
-                        std::uint16_t & senderPort,
-                        const time::Duration & timeout)
-{
-    using namespace boost::asio::ip;
-    udp::endpoint senderEndpoint;
-
-    auto asyncOperation = [&socket](auto && ... args)
-    { socket.async_receive_from(std::forward<decltype(args)>(args)...); };
-
-    std::tuple<boost::system::error_code, std::size_t> result;
-    closeable::timedOperation(
-        result, context, asyncOperation, socket, timeout, boost::asio::buffer(buffer), senderEndpoint);
-
-    senderHost = senderEndpoint.address().to_string();
-    senderPort = senderEndpoint.port();
-
-    std::string receiveData{};
-    auto numBytesTransferred = std::get<1>(result);
-    if (!internal::stringFromBuffer(receiveData, buffer, numBytesTransferred))
-        throw error::FailedOperation{};
-    return receiveData;
-}
 
 template<typename DatagramSocket>
 void asyncReceiveFrom(asionet::Context & context,

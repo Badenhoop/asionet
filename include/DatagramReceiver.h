@@ -44,13 +44,6 @@ public:
           , buffer(maxMessageSize + Frame::HEADER_SIZE)
     {}
 
-    std::shared_ptr<Message> receive(std::string & host, std::uint16_t & port, const time::Duration & timeout)
-    {
-        BusyLock busyLock{*this};
-        setupSocket();
-        return message::receiveDatagram<Message>(context, socket, buffer, host, port, timeout);
-    }
-
     void asyncReceive(const time::Duration & timeout, const ReceiveHandler & handler)
     {
         auto self = this->shared_from_this();

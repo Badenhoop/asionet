@@ -19,8 +19,7 @@ public:
 	{}
 
 	template<typename Handler>
-	boost::asio::executor_binder<typename boost::asio::decay<Handler>::type, typename asionet::Context::strand>
-	operator()(Handler && handler)
+	auto operator()(Handler && handler)
 	{
 		return boost::asio::bind_executor(*this, handler);
 	}

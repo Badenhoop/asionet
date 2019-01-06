@@ -93,33 +93,6 @@ public:
           , resolver(context)
     {}
 
-    std::vector<Endpoint> resolve(const std::string & host,
-                                  const std::string & service,
-                                  const time::Duration & timeout)
-    {
-        BusyLock busyLock{*this};
-        resolver.open();
-
-        UnderlyingResolver::Query query{host, service};
-
-        auto resolveOperation = [this](auto && ... args)
-        { resolver.async_resolve(std::forward<decltype(args)>(args)...); };
-
-        std::tuple<boost::system::error_code, UnderlyingResolver::Iterator> result;
-
-        closeable::timedOperation(
-            result,
-            context,
-            resolveOperation,
-            resolver,
-            timeout,
-            query);
-
-        auto endpointIterator = std::get<1>(result);
-
-        return endpointsFromIterator(endpointIterator);
-    }
-
     void asyncResolve(const std::string & host,
                       const std::string & service,
                       const time::Duration & timeout,

@@ -34,25 +34,6 @@ using WriteHandler = std::function<void(const error::ErrorCode & error)>;
 using ReadHandler = std::function<void(const error::ErrorCode & error, std::string & data)>;
 
 template<typename SyncWriteStream>
-void write(asionet::Context & context,
-           SyncWriteStream & stream,
-           const std::string & writeData,
-           const time::Duration & timeout)
-{
-    using namespace asionet::internal;
-    Frame frame{(const std::uint8_t *) writeData.c_str(), (std::uint32_t) writeData.size()};
-
-    auto asyncOperation = [](auto && ... args) { boost::asio::async_write(std::forward<decltype(args)>(args)...); };
-
-    std::tuple<boost::system::error_code, std::size_t> result;
-    closeable::timedOperation(result, context, asyncOperation, stream, timeout, stream, frame.getBuffers());
-
-    auto numBytesTransferred = std::get<1>(result);
-    if (numBytesTransferred < frame.getSize())
-        throw error::FailedOperation{};
-};
-
-template<typename SyncWriteStream>
 void asyncWrite(asionet::Context & context,
                 SyncWriteStream & stream,
                 std::shared_ptr<std::string> writeData,
@@ -78,47 +59,6 @@ void asyncWrite(asionet::Context & context,
         },
         stream, frame->getBuffers());
 }
-
-template<typename SyncReadStream>
-std::string read(asionet::Context & context,
-                 SyncReadStream & stream,
-                 boost::asio::streambuf & buffer,
-                 time::Duration timeout)
-{
-    using asionet::internal::Frame;
-    using namespace asionet::stream::internal;
-
-    auto startTime = time::now();
-
-    auto asyncOperation = [](auto && ... args) { boost::asio::async_read(std::forward<decltype(args)>(args)...); };
-
-    std::tuple<boost::system::error_code, std::size_t> result;
-
-    // Receive frame header.
-    closeable::timedOperation(
-        result, context, asyncOperation, stream, timeout, stream, buffer,
-        boost::asio::transfer_exactly(Frame::HEADER_SIZE));
-
-    auto numBytesTransferred = std::get<1>(result);
-    if (numBytesTransferred != Frame::HEADER_SIZE)
-        throw error::FailedOperation{};
-
-    auto numDataBytes = numDataBytesFromBuffer(buffer);
-    if (numDataBytes == 0)
-        return utils::stringFromStreambuf(buffer, numDataBytes);
-
-    timeout -= time::now() - startTime;
-
-    // Receive actual data.
-    closeable::timedOperation(
-        result, context, asyncOperation, stream, timeout, stream, buffer, boost::asio::transfer_exactly(numDataBytes));
-
-    numBytesTransferred = std::get<1>(result);
-    if (numBytesTransferred != numDataBytes)
-        throw error::FailedOperation{};
-
-    return utils::stringFromStreambuf(buffer, numDataBytes);
-};
 
 template<typename SyncReadStream>
 void asyncRead(asionet::Context & context,

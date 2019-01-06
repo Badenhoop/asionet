@@ -44,40 +44,44 @@ public:
 	{}
 
 	template<typename Handler>
-	Handler operator()(Handler && handler)
+	auto operator()(Handler && handler)
 	{
-		return [handler, this](auto && ... args)
+		return [handler, this](auto && ... args) -> void
 		{
-			handler(args...);
-
-			{
-				std::lock_guard<std::mutex> lock{waiter.mutex};
-				done = true;
-			}
-
-			waiter.cond.notify_all();
+			handler(std::forward<decltype(args)>(args)...);
+			this->setReady();
 		};
 	}
 
-	void clear()
+	void setReady()
+	{
+		{
+			std::lock_guard<std::mutex> lock{waiter.mutex};
+			ready = true;
+		}
+
+		waiter.cond.notify_all();
+	}
+
+	void setWaiting()
 	{
 		std::lock_guard<std::mutex> lock{waiter.mutex};
-		done = false;
+		ready = false;
 	}
 
 	friend WaitExpression operator&&(const Waitable & lhs, const Waitable & rhs)
 	{
-		return [&] { return lhs.done && rhs.done; };
+		return [&] { return lhs.ready && rhs.ready; };
 	}
 
 	friend WaitExpression operator&&(const WaitExpression & lhs, const Waitable & rhs)
 	{
-		return [&] { return lhs() && rhs.done; };
+		return [&] { return lhs() && rhs.ready; };
 	}
 
 	friend WaitExpression operator&&(const Waitable & lhs, const WaitExpression & rhs)
 	{
-		return [&] { return lhs.done && rhs(); };
+		return [&] { return lhs.ready && rhs(); };
 	}
 
 	friend WaitExpression operator&&(const WaitExpression & lhs, const WaitExpression & rhs)
@@ -87,17 +91,17 @@ public:
 
 	friend WaitExpression operator||(const Waitable & lhs, const Waitable & rhs)
 	{
-		return [&] { return lhs.done || rhs.done; };
+		return [&] { return lhs.ready || rhs.ready; };
 	}
 
 	friend WaitExpression operator||(const WaitExpression & lhs, const Waitable & rhs)
 	{
-		return [&] { return lhs() || rhs.done; };
+		return [&] { return lhs() || rhs.ready; };
 	}
 
 	friend WaitExpression operator||(const Waitable & lhs, const WaitExpression & rhs)
 	{
-		return [&] { return lhs.done || rhs(); };
+		return [&] { return lhs.ready || rhs(); };
 	}
 
 	friend WaitExpression operator||(const WaitExpression & lhs, const WaitExpression & rhs)
@@ -107,7 +111,7 @@ public:
 
 private:
 	Waiter & waiter;
-	bool done{false};
+	bool ready{false};
 };
 
 }

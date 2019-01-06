@@ -70,61 +70,6 @@ struct IsOpen
 };
 
 template<
-	typename ResultTuple,
-	typename AsyncOperation,
-	typename... AsyncOperationArgs,
-	typename Closeable>
-void timedOperation(ResultTuple & result,
-                    asionet::Context & context,
-                    AsyncOperation asyncOperation,
-                    Closeable & closeable,
-                    const time::Duration & timeout,
-                    AsyncOperationArgs && ... args)
-{
-	// Guarantee that the timer's handler and async operation won't run concurrently.
-	auto serializer = std::make_shared<WorkSerializer>(context);
-
-	auto timer = Timer::create(context);
-	timer->startTimeout(
-		timeout,
-		(*serializer)([&closeable, serializer]
-		              {
-			              // Timeout expired: close the closeable.
-			              Closer<Closeable>::close(closeable);
-		              }));
-
-	// A 'would_block' closeableError is guaranteed to never occur on an asynchronous operation.
-	boost::system::error_code closeableError = boost::asio::error::would_block;
-
-	Waiter waiter{context};
-	Waitable waitable{waiter};
-
-	// Run asynchronous operation.
-	asyncOperation(
-		std::forward<AsyncOperationArgs>(args)...,
-		waitable((*serializer)([&closeableError, timer, &result](const boost::system::error_code & error,
-		                                                         auto && ... remainingHandlerArgs)
-		                       {
-			                       timer->stop();
-			                       // Create a tuple to store the results.
-			                       result = std::make_tuple(error, remainingHandlerArgs...);
-		                       })));
-
-	waiter.await(waitable);
-
-	// Determine whether a connection was successfully established.
-	// Even though our timer handler might have run to close the closeable, the connect operation
-	// might have notionally succeeded!
-	if (closeableError || !IsOpen<Closeable>{}(closeable))
-	{
-		if (closeableError == boost::asio::error::operation_aborted)
-			throw error::Aborted{};
-
-		throw error::FailedOperation{};
-	}
-}
-
-template<
 	typename AsyncOperation,
 	typename... AsyncOperationArgs,
 	typename Closeable,

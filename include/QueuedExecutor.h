@@ -61,12 +61,15 @@ public:
 			self->operationQueue(
 				[&](auto & queue)
 				{
-					if (!queue.empty())
+					if (queue.empty())
 					{
-						auto nextOperation = queue.front();
-						queue.pop();
-						self->context.post(nextOperation);
+						self->executing = false;
+						return;
 					}
+
+					auto nextOperation = queue.front();
+					queue.pop();
+					self->context.post(nextOperation);
 				});
 		};
 
@@ -76,8 +79,9 @@ public:
 		operationQueue(
 			[&](auto & queue)
 			{
-				if (queue.empty())
+				if (!executing)
 				{
+					executing = true;
 					asyncOperation(wrappedHandler, std::forward<AsyncOperationArgs>(asyncOperationArgs)...);
 					return;
 				}
@@ -99,12 +103,14 @@ public:
 			[&](auto & queue)
 			{
 				queue = std::queue<std::function<void()>>{};
+				executing = false;
 			});
 	}
 
 private:
 	asionet::Context & context;
 	utils::Monitor<std::queue<std::function<void()>>> operationQueue;
+	std::atomic<bool> executing{false};
 };
 
 }

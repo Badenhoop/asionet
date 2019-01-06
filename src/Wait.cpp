@@ -9,7 +9,7 @@ namespace asionet
 
 void Waiter::await(const Waitable & waitable)
 {
-	await([&] { return waitable.done; });
+	await([&] { return waitable.ready; });
 }
 
 void Waiter::await(const WaitExpression & expression)

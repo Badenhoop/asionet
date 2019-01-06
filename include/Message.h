@@ -87,18 +87,6 @@ bool decode(const std::string & data, std::shared_ptr<Message> & message)
 }
 
 template<typename Message, typename SyncWriteStream>
-void send(asionet::Context & context,
-          SyncWriteStream & stream,
-          const Message & message,
-          const time::Duration & timeout)
-{
-	std::shared_ptr<std::string> data;
-	if (!internal::encode(message, data))
-		throw error::Encoding{};
-	asionet::stream::write(context, stream, *data, timeout);
-};
-
-template<typename Message, typename SyncWriteStream>
 void asyncSend(asionet::Context & context,
                SyncWriteStream & stream,
                const Message & message,
@@ -116,19 +104,6 @@ void asyncSend(asionet::Context & context,
 	asionet::stream::asyncWrite(
 		context, stream, data, timeout,
 		[handler, data](const auto & errorCode) { handler(errorCode); });
-};
-
-template<typename Message, typename SyncReadStream>
-std::shared_ptr<Message> receive(asionet::Context & context,
-                                 SyncReadStream & stream,
-                                 boost::asio::streambuf & buffer,
-                                 const time::Duration & timeout)
-{
-	auto data = asionet::stream::read(context, stream, buffer, timeout);
-	std::shared_ptr<Message> message;
-	if (!internal::decode(data, message))
-		throw error::Decoding{};
-	return message;
 };
 
 template<typename Message, typename SyncReadStream>
@@ -153,20 +128,6 @@ void asyncReceive(asionet::Context & context,
 };
 
 template<typename Message, typename DatagramSocket>
-void sendDatagram(asionet::Context & context,
-                  DatagramSocket & socket,
-                  const Message & message,
-                  const std::string & host,
-                  std::uint16_t port,
-                  const time::Duration & timeout)
-{
-	std::shared_ptr<std::string> data;
-	if (!internal::encode(message, data))
-		throw error::Encoding{};
-	asionet::socket::sendTo(context, socket, *data, host, port, timeout);
-}
-
-template<typename Message, typename DatagramSocket>
 void asyncSendDatagram(asionet::Context & context,
                        DatagramSocket & socket,
                        const Message & message,
@@ -186,21 +147,6 @@ void asyncSendDatagram(asionet::Context & context,
 	asionet::socket::asyncSendTo(
 		context, socket, data, host, port, timeout,
 		[handler, data](const auto & error) { handler(error); });
-}
-
-template<typename Message, typename DatagramSocket>
-std::shared_ptr<Message> receiveDatagram(asionet::Context & context,
-                                         DatagramSocket & socket,
-                                         std::vector<char> & buffer,
-                                         std::string & host,
-                                         std::uint16_t & port,
-                                         const time::Duration & timeout)
-{
-	auto data = asionet::socket::receiveFrom(context, socket, buffer, host, port, timeout);
-	std::shared_ptr<Message> message;
-	if (!internal::decode(data, message))
-		throw error::Decoding{};
-	return message;
 }
 
 template<typename Message, typename DatagramSocket>
