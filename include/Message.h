@@ -101,9 +101,12 @@ void asyncSend(asionet::Context & context,
 		return;
 	}
 
+	// keep reference because of std::move()
+	auto & dataRef = *data;
+
 	asionet::stream::asyncWrite(
-		context, stream, *data, timeout,
-		[handler, data](const auto & errorCode) { handler(errorCode); });
+		context, stream, dataRef, timeout,
+		[handler, data = std::move(data)](const auto & errorCode) { handler(errorCode); });
 };
 
 template<typename Message, typename SyncReadStream>
@@ -144,9 +147,12 @@ void asyncSendDatagram(asionet::Context & context,
 		return;
 	}
 
+	// keep reference because of std::move()
+	auto & dataRef = *data;
+
 	asionet::socket::asyncSendTo(
-		context, socket, *data, host, port, timeout,
-		[handler, data](const auto & error) { handler(error); });
+		context, socket, dataRef, host, port, timeout,
+		[handler, data = std::move(data)](const auto & error) { handler(error); });
 }
 
 template<typename Message, typename DatagramSocket>

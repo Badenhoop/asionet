@@ -26,22 +26,9 @@ namespace utils
  * operation is automatically posted on the given asionet::Context for execution.
  */
 class QueuedExecutor
-	: public std::enable_shared_from_this<QueuedExecutor>
 {
-private:
-	struct PrivateTag
-	{
-	};
-
 public:
-	using Ptr = std::shared_ptr<QueuedExecutor>;
-
-	static Ptr create(asionet::Context & context)
-	{
-		return std::make_shared<QueuedExecutor>(PrivateTag{}, context);
-	}
-
-	QueuedExecutor(PrivateTag, asionet::Context & context)
+	explicit QueuedExecutor(asionet::Context & context)
 		: context(context)
 	{}
 
@@ -50,26 +37,24 @@ public:
 	             const Handler & handler,
 	             AsyncOperationArgs && ... asyncOperationArgs)
 	{
-		auto self = shared_from_this();
-
 		// Wrap the handler inside another handler.
 		// This wrapped handler executes the passed handler and checks whether there exist any further operations which are waiting inside the queue.
 		// If this is the case, the operation will be popped from the queue and posted to the context for later execution.
-		auto wrappedHandler = [self, handler](auto && ... handlerArgs)
+		auto wrappedHandler = [this, handler](auto && ... handlerArgs)
 		{
 			handler(std::forward<decltype(handlerArgs)>(handlerArgs)...);
-			self->operationQueue(
+			operationQueue(
 				[&](auto & queue)
 				{
 					if (queue.empty())
 					{
-						self->executing = false;
+						executing = false;
 						return;
 					}
 
 					auto nextOperation = queue.front();
 					queue.pop();
-					self->context.post(nextOperation);
+					context.post(nextOperation);
 				});
 		};
 
@@ -93,8 +78,6 @@ public:
 					}
 				);
 			});
-
-
 	}
 
 	void clear()

@@ -22,32 +22,19 @@ namespace asionet
 
 template<typename Service>
 class ServiceClient
-	: public std::enable_shared_from_this<ServiceClient<Service>>
 {
-private:
-	struct PrivateTag
-	{
-	};
-
 public:
-	using Ptr = std::shared_ptr<ServiceClient<Service>>;
-
 	using RequestMessage = typename Service::RequestMessage;
 	using ResponseMessage = typename Service::ResponseMessage;
 
 	using CallHandler = std::function<void(const error::ErrorCode & error,
 										   const std::shared_ptr<ResponseMessage> & response)>;
 
-	static Ptr create(asionet::Context & context, std::size_t maxMessageSize = 512)
-	{
-		return std::make_shared<ServiceClient<Service>>(PrivateTag{}, context, maxMessageSize);
-	}
-
-	ServiceClient(PrivateTag, asionet::Context & context, std::size_t maxMessageSize)
+	ServiceClient(asionet::Context & context, std::size_t maxMessageSize = 512)
 		: context(context)
 		  , socket(context)
 		  , maxMessageSize(maxMessageSize)
-		  , queuedExecutor(utils::QueuedExecutor::create(context))
+		  , queuedExecutor(context)
 	{}
 
 	void asyncCall(const RequestMessage & request,
@@ -68,16 +55,15 @@ public:
 			return;
 		}
 
-		auto self = this->shared_from_this();
-		auto asyncOperation = [self](auto && ... args)
-		{ self->asyncCallOperation(std::forward<decltype(args)>(args)...); };
-		queuedExecutor->execute(asyncOperation, handler, sendData, host, port, timeout);
+		auto asyncOperation = [this](auto && ... args)
+		{ this->asyncCallOperation(std::forward<decltype(args)>(args)...); };
+		queuedExecutor.execute(asyncOperation, handler, sendData, host, port, timeout);
 	}
 
 	void stop()
 	{
 		closeable::Closer<Socket>::close(socket);
-		queuedExecutor->clear();
+		queuedExecutor.clear();
 	}
 
 private:
@@ -87,33 +73,31 @@ private:
 	// We must keep track of some variables during the async handler chain.
 	struct AsyncState
 	{
-		AsyncState(Ptr self,
-		           const CallHandler & handler,
+		AsyncState(ServiceClient<Service> & client,
+			       const CallHandler & handler,
 		           std::shared_ptr<std::string> & sendData,
 		           time::Duration timeout,
 		           time::TimePoint startTime)
-			: self(self)
-			  , handler(handler)
+			: handler(handler)
 			  , sendData(std::move(sendData))
 			  , timeout(timeout)
 			  , startTime(startTime)
-			  , buffer(self->maxMessageSize + Frame::HEADER_SIZE)
-			  , closer(self->socket)
+			  , buffer(client.maxMessageSize + Frame::HEADER_SIZE)
+			  , closer(client.socket)
 		{}
 
-		Ptr self;
 		CallHandler handler;
 		std::shared_ptr<std::string> sendData;
 		time::Duration timeout;
 		time::TimePoint startTime;
 		boost::asio::streambuf buffer;
-		closeable::Closer <Socket> closer;
+		closeable::Closer<Socket> closer;
 	};
 
 	asionet::Context & context;
 	Socket socket;
 	std::size_t maxMessageSize;
-	utils::QueuedExecutor::Ptr queuedExecutor;
+	utils::QueuedExecutor queuedExecutor;
 
 	void asyncCallOperation(const CallHandler & handler,
 		                    std::shared_ptr<std::string> & sendData,
@@ -121,18 +105,20 @@ private:
 		                    std::uint16_t port,
 		                    const time::Duration & timeout)
 	{
-		auto self = this->shared_from_this();
 		// Container for our variables which are needed for the subsequent asynchronous calls to connect, receive and send.
 		// When 'state' goes out of scope, it does cleanup.
 		auto state = std::make_shared<AsyncState>(
-			self, handler, sendData, timeout, time::now());
+			*this, handler, sendData, timeout, time::now());
 
 		newSocket();
 
+		// keep reference due to std::move()
+		auto & timeoutRef = state->timeout;
+
 		// Connect to server.
 		asionet::socket::asyncConnect(
-			context, socket, host, port, state->timeout,
-			[state](const auto & error)
+			context, socket, host, port, timeoutRef,
+			[this, state = std::move(state)](const auto & error)
 			{
 				if (error)
 				{
@@ -143,10 +129,13 @@ private:
 
 				ServiceClient<Service>::updateTimeout(state->timeout, state->startTime);
 
+				auto & sendDataRef = state->sendData;
+				auto & timeoutRef = state->timeout;
+
 				// Send the request.
 				asionet::stream::asyncWrite(
-					state->self->context, state->self->socket, *state->sendData, state->timeout,
-					[state](const auto & error)
+					context, socket, *sendDataRef, timeoutRef,
+					[this, state = std::move(state)](const auto & error)
 					{
 						if (error)
 						{
@@ -157,10 +146,13 @@ private:
 
 						ServiceClient<Service>::updateTimeout(state->timeout, state->startTime);
 
+						auto & bufferRef = state->buffer;
+						auto & timeoutRef = state->timeout;
+
 						// Receive the response.
 						asionet::message::asyncReceive<ResponseMessage>(
-							state->self->context, state->self->socket, state->buffer, state->timeout,
-							[state](auto const & error, const auto & response)
+							context, socket, bufferRef, timeoutRef,
+							[this, state = std::move(state)](auto const & error, const auto & response)
 							{
 								state->handler(error, response);
 							});

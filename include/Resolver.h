@@ -61,13 +61,7 @@ private:
 }
 
 class Resolver
-    : public std::enable_shared_from_this<Resolver>
 {
-private:
-    struct PrivateTag
-    {
-    };
-
 public:
     struct Endpoint
     {
@@ -79,19 +73,12 @@ public:
         std::uint16_t port;
     };
 
-    using Ptr = std::shared_ptr<Resolver>;
-
     using ResolveHandler = std::function<void(const error::ErrorCode & error, const std::vector<Endpoint> & endpoints)>;
 
-    static Ptr create(asionet::Context & context)
-    {
-        return std::make_shared<Resolver>(PrivateTag{}, context);
-    }
-
-    Resolver(PrivateTag, asionet::Context & context)
+    explicit Resolver(asionet::Context & context)
         : context(context)
           , resolver(context)
-          , queuedExecutor(utils::QueuedExecutor::create(context))
+          , queuedExecutor(context)
     {}
 
     void asyncResolve(const std::string & host,
@@ -99,16 +86,15 @@ public:
                       const time::Duration & timeout,
                       const ResolveHandler & handler)
     {
-        auto self = this->shared_from_this();
-        auto asyncOperation = [self](auto && ... args)
-        { self->asyncResolveOperation(std::forward<decltype(args)>(args)...); };
-        queuedExecutor->execute(asyncOperation, handler, host, service, timeout);
+        auto asyncOperation = [this](auto && ... args)
+        { this->asyncResolveOperation(std::forward<decltype(args)>(args)...); };
+        queuedExecutor.execute(asyncOperation, handler, host, service, timeout);
     }
 
     void stop()
     {
         closeable::Closer<UnderlyingResolver>::close(resolver);
-        queuedExecutor->clear();
+        queuedExecutor.clear();
     }
 
 private:
@@ -117,14 +103,13 @@ private:
 
     asionet::Context & context;
     UnderlyingResolver resolver;
-    utils::QueuedExecutor::Ptr queuedExecutor;
+    utils::QueuedExecutor queuedExecutor;
 
     void asyncResolveOperation(const ResolveHandler & handler,
                                const std::string & host,
                                const std::string & service,
                                const time::Duration & timeout)
     {
-        auto self = shared_from_this();
         resolver.open();
 
         UnderlyingResolver::Query query{host, service};
@@ -137,9 +122,9 @@ private:
             resolveOperation,
             resolver,
             timeout,
-            [self, handler](const auto & networkingError, const auto & boostError, auto endpointIterator)
+            [this, handler](const auto & networkingError, const auto & boostError, auto endpointIterator)
             {
-                handler(networkingError, self->endpointsFromIterator(endpointIterator));
+                handler(networkingError, this->endpointsFromIterator(endpointIterator));
             },
             query);
     }

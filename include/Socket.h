@@ -104,18 +104,19 @@ void asyncSendTo(asionet::Context & context,
     udp::endpoint endpoint{address::from_string(host), port};
 
     using namespace asionet::internal;
-    auto buffer = std::make_shared<Frame>((const std::uint8_t *) sendData.c_str(), sendData.size());
+    auto frame = std::make_shared<Frame>((const std::uint8_t *) sendData.c_str(), sendData.size());
+    auto && buffers = frame->getBuffers();
 
     auto asyncOperation = [&socket](auto && ... args)
     { socket.async_send_to(std::forward<decltype(args)>(args)...); };
 
     closeable::timedAsyncOperation(
         context, asyncOperation, socket, timeout,
-        [handler, buffer](const auto & networkingError,
-                          const auto & boostError,
-                          auto numBytesTransferred)
+        [handler, frame = std::move(frame)](const auto & networkingError,
+                                              const auto & boostError,
+                                              auto numBytesTransferred)
         {
-            if (numBytesTransferred < buffer->getSize())
+            if (numBytesTransferred < frame->getSize())
             {
                 handler(error::codes::FAILED_OPERATION);
                 return;
@@ -123,7 +124,7 @@ void asyncSendTo(asionet::Context & context,
 
             handler(networkingError);
         },
-        buffer->getBuffers(), endpoint);
+        buffers, endpoint);
 };
 
 template<typename DatagramSocket>

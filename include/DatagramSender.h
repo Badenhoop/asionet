@@ -15,27 +15,14 @@ namespace asionet
 
 template<typename Message>
 class DatagramSender
-	: public std::enable_shared_from_this<DatagramSender<Message>>
 {
-private:
-	struct PrivateTag
-	{
-	};
-
 public:
-	using Ptr = std::shared_ptr<DatagramSender>;
-
 	using SendHandler = std::function<void(const error::ErrorCode & error)>;
 
-	static Ptr create(asionet::Context & context)
-	{
-		return std::make_shared<DatagramSender>(PrivateTag{}, context);
-	}
-
-	DatagramSender(PrivateTag, asionet::Context & context)
+	explicit DatagramSender(asionet::Context & context)
 		: context(context)
 		  , socket(context)
-		  , queuedExecutor(utils::QueuedExecutor::create(context))
+		  , queuedExecutor(context)
 	{}
 
 	void asyncSend(const Message & message,
@@ -52,16 +39,15 @@ public:
 			return;
 		}
 
-		auto self = this->shared_from_this();
-		auto asyncOperation = [self](auto && ... args)
-		{ self->asyncSendOperation(std::forward<decltype(args)>(args)...); };
-		queuedExecutor->execute(asyncOperation, handler, std::move(data), ip, port, timeout);
+		auto asyncOperation = [this](auto && ... args)
+		{ this->asyncSendOperation(std::forward<decltype(args)>(args)...); };
+		queuedExecutor.execute(asyncOperation, handler, data, ip, port, timeout);
 	}
 
 	void stop()
 	{
 		closeable::Closer<Socket>::close(socket);
-		queuedExecutor->clear();
+		queuedExecutor.clear();
 	}
 
 private:
@@ -70,20 +56,22 @@ private:
 
 	asionet::Context & context;
 	Socket socket;
-	utils::QueuedExecutor::Ptr queuedExecutor;
+	utils::QueuedExecutor queuedExecutor;
 
 	void asyncSendOperation(const SendHandler & handler,
-	                        const std::shared_ptr<std::string> & data,
+	                        std::shared_ptr<std::string> & data,
 	                        const std::string & ip,
 	                        std::uint16_t port,
 	                        const time::Duration & timeout)
 	{
-		auto self = this->shared_from_this();
 		setupSocket();
 
+		// keep reference because of std::move()
+		auto & dataRef = *data;
+
 		asionet::socket::asyncSendTo(
-			context, socket, *data, ip, port, timeout,
-			[self, handler, data](const auto & error) { handler(error); });
+			context, socket, dataRef, ip, port, timeout,
+			[handler, data = std::move(data)](const auto & error) { handler(error); });
 	}
 
 	void setupSocket()

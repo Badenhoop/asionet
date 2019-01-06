@@ -15,29 +15,15 @@ namespace asionet
 
 template<typename Message>
 class DatagramReceiver
-    : public std::enable_shared_from_this<DatagramReceiver<Message>>
-      , public Busyable
 {
-private:
-    struct PrivateTag
-    {
-    };
-
 public:
-    using Ptr = std::shared_ptr<DatagramReceiver<Message>>;
-
     using ReceiveHandler = std::function<
         void(const error::ErrorCode & error,
              const std::shared_ptr<Message> & message,
              const std::string & host,
              std::uint16_t port)>;
 
-    static Ptr create(asionet::Context & context, std::uint16_t bindingPort, std::size_t maxMessageSize = 512)
-    {
-        return std::make_shared<DatagramReceiver<Message>>(PrivateTag{}, context, bindingPort, maxMessageSize);
-    }
-
-    DatagramReceiver(PrivateTag, asionet::Context & context, std::uint16_t bindingPort, std::size_t maxMessageSize)
+    DatagramReceiver(asionet::Context & context, std::uint16_t bindingPort, std::size_t maxMessageSize = 512)
         : context(context)
           , bindingPort(bindingPort)
           , socket(context)
@@ -46,27 +32,15 @@ public:
 
     void asyncReceive(const time::Duration & timeout, const ReceiveHandler & handler)
     {
-        auto self = this->shared_from_this();
-        auto state = std::make_shared<AsyncState>(self, handler);
-
         setupSocket();
 
         message::asyncReceiveDatagram<Message>(
             context, socket, buffer, timeout,
-            [state](const auto & error,
-                    const auto & message,
-                    const auto & senderHost,
-                    auto senderPort)
+            [handler](const auto & error, const auto & message, const auto & senderHost, auto senderPort)
             {
-                state->busyLock.unlock();
-                state->handler(error, message, senderHost, senderPort);
+                handler(error, message, senderHost, senderPort);
             });
     }
-
-    bool isReceiving() const noexcept
-    {
-        return isBusy();
-    };
 
     void stop()
     {
@@ -94,19 +68,6 @@ private:
         socket.set_option(boost::asio::socket_base::broadcast{true});
         socket.bind(Endpoint(Udp::v4(), bindingPort));
     }
-
-    struct AsyncState
-    {
-        AsyncState(Ptr self, const ReceiveHandler & handler)
-            : busyLock(*self)
-              , self(self)
-              , handler(handler)
-        {}
-
-        BusyLock busyLock;
-        Ptr self;
-        ReceiveHandler handler;
-    };
 };
 
 }

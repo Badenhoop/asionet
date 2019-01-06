@@ -14,41 +14,27 @@
 namespace asionet
 {
 
-class Timer
-    : public std::enable_shared_from_this<Timer>
-      , public Busyable
+class Timer : public Busyable
 {
-private:
-    struct PrivateTag
-    {
-    };
-
 public:
-    using Ptr = std::shared_ptr<Timer>;
     using TimeoutHandler = std::function<void()>;
 
     // Objects of this class should always be declared as std::shared_ptr.
-    Timer(PrivateTag, asionet::Context & context)
+    explicit Timer(asionet::Context & context)
         : timer(context)
     {}
 
-    static Ptr create(asionet::Context & context)
-    {
-        return std::make_shared<Timer>(PrivateTag{}, context);
-    }
-
     void startTimeout(const time::Duration & duration, const TimeoutHandler & handler)
     {
-        auto self = shared_from_this();
-        auto state = std::make_shared<AsyncState>(self, handler, duration);
+        auto state = std::make_shared<AsyncState>(*this, handler, duration);
 
         enabled = true;
 
         timer.expires_from_now(duration);
         timer.async_wait(
-            [state](const boost::system::error_code & error) mutable
+            [this, state](const boost::system::error_code & error) mutable
             {
-                if (error || !state->self->enabled)
+                if (error || !enabled)
                     return;
 
                 state->busyLock.unlock();
@@ -58,20 +44,19 @@ public:
 
     void startPeriodicTimeout(const time::Duration & interval, const TimeoutHandler & handler)
     {
-        auto self = shared_from_this();
-        auto state = std::make_shared<AsyncState>(self, handler, interval);
+        auto state = std::make_shared<AsyncState>(*this, handler, interval);
 
         enabled = true;
 
         timer.expires_from_now(interval);
         timer.async_wait(
-            [state = std::move(state)](const boost::system::error_code & error) mutable
+            [this, state = std::move(state)](const boost::system::error_code & error) mutable
             {
-                if (error || !state->self->enabled)
+                if (error || !enabled)
                     return;
 
                 state->handler();
-                state->self->nextPeriod(state);
+                nextPeriod(state);
             });
     }
 
@@ -88,15 +73,13 @@ public:
 private:
     struct AsyncState
     {
-        AsyncState(Ptr self, const TimeoutHandler & handler, const time::Duration & duration)
-            : busyLock(*self)
-              , self(self)
+        AsyncState(Timer & timer, const TimeoutHandler & handler, const time::Duration & duration)
+            : busyLock(timer)
               , handler(handler)
               , duration(duration)
         {}
 
         BusyLock busyLock;
-        Ptr self;
         TimeoutHandler handler;
         time::Duration duration;
     };
@@ -106,18 +89,18 @@ private:
 
     void nextPeriod(std::shared_ptr<AsyncState> & state)
     {
-        if (!state->self->enabled)
+        if (!enabled)
             return;
 
-        state->self->timer.expires_at(state->self->timer.expires_at() + state->duration);
-        state->self->timer.async_wait(
-            [state](const boost::system::error_code & error) mutable
+        timer.expires_at(timer.expires_at() + state->duration);
+        timer.async_wait(
+            [this, state](const boost::system::error_code & error) mutable
             {
-                if (error || !state->self->enabled)
+                if (error || !enabled)
                     return;
 
                 state->handler();
-                state->self->nextPeriod(state);
+                nextPeriod(state);
             });
     }
 };

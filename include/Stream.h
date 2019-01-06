@@ -42,12 +42,13 @@ void asyncWrite(asionet::Context & context,
 {
     using namespace asionet::internal;
     auto frame = std::make_shared<Frame>((const std::uint8_t *) writeData.c_str(), writeData.size());
+    auto buffers = frame->getBuffers();
 
     auto asyncOperation = [](auto && ... args) { boost::asio::async_write(std::forward<decltype(args)>(args)...); };
 
     closeable::timedAsyncOperation(
         context, asyncOperation, stream, timeout,
-        [handler, frame](const auto & networkingError, const auto & boostError, auto numBytesTransferred)
+        [handler, frame = std::move(frame)](const auto & networkingError, const auto & boostError, auto numBytesTransferred)
         {
             if (numBytesTransferred < frame->getSize())
             {
@@ -57,7 +58,7 @@ void asyncWrite(asionet::Context & context,
 
             handler(networkingError);
         },
-        stream, frame->getBuffers());
+        stream, buffers);
 }
 
 template<typename SyncReadStream>
@@ -77,7 +78,7 @@ void asyncRead(asionet::Context & context,
     // Receive frame header.
     closeable::timedAsyncOperation(
         context, asyncOperation, stream, timeout,
-        [&context, &stream, &buffer, timeout, handler, startTime, asyncOperation]
+        [&context, &stream, &buffer, timeout, handler, startTime]
             (const auto & networkingError, const auto & boostError, auto numBytesTransferred)
         {
             std::string data{};
@@ -103,6 +104,8 @@ void asyncRead(asionet::Context & context,
 
             auto timeSpend = time::now() - startTime;
             auto newTimeout = timeout - timeSpend;
+
+	        auto asyncOperation = [](auto && ... args) { boost::asio::async_read(std::forward<decltype(args)>(args)...); };
 
             // Receive actual data.
             closeable::timedAsyncOperation(

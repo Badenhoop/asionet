@@ -30,9 +30,8 @@ void testAsyncServices()
     Context context;
     Worker worker{context};
 
-    auto server = ServiceServer<PlatoonService>::create(context, 10001);
-
-    server->advertiseService(
+    ServiceServer<PlatoonService> server{context, 10001};
+    server.advertiseService(
         [](const auto & clientEndpoint, const auto & requestMessage, auto & responseMessage)
         {
             std::cout << "Request from "
@@ -45,17 +44,18 @@ void testAsyncServices()
 
     sleep(1);
 
-    std::atomic<std::size_t> pending{5};
+    std::size_t count = 5;
+    std::atomic<std::size_t> pending{count};
     std::atomic<std::size_t> correct{0};
     std::atomic<bool> calling{false};
 
-    auto client = ServiceClient<PlatoonService>::create(context);
+    ServiceClient<PlatoonService> client{context};
     Waiter waiter{context};
 
-    for (int i = 0; i < 5; i++)
+    for (int i = 0; i < count; i++)
     {
         Waitable waitable{waiter};
-        client->asyncCall(
+        client.asyncCall(
             PlatoonMessage::followerRequest(2), "127.0.0.1", 10001, 1s,
             waitable([&](const auto & error, const auto & response)
             {
@@ -76,7 +76,7 @@ void testAsyncServices()
     }
 
     while (pending > 0);
-    if (correct == 5)
+    if (correct == count)
         std::cout << "SUCCESS!\n";
 }
 
@@ -89,9 +89,8 @@ void testTcpClientTimeout()
 
     const auto timeout = 3s;
 
-    auto server = ServiceServer<PlatoonService>::create(context1, 10001);
-
-    server->advertiseService(
+    ServiceServer<PlatoonService> server{context1, 10001};
+    server.advertiseService(
         [](const auto & clientEndpoint, const auto & requestMessage, auto & responseMessage)
         {
             // Just sleep for 5 seconds.
@@ -101,13 +100,13 @@ void testTcpClientTimeout()
 
     sleep(1);
 
-    auto client = ServiceClient<PlatoonService>::create(context2);
+    ServiceClient<PlatoonService> client{context2};
     Waiter waiter{context2};
     Waitable waitable{waiter};
 
     auto startTime = boost::posix_time::microsec_clock::local_time();
 
-    client->asyncCall(PlatoonMessage::followerRequest(2), "127.0.0.1", 10001, timeout,
+    client.asyncCall(PlatoonMessage::followerRequest(2), "127.0.0.1", 10001, timeout,
     waitable([&](const auto & error, const auto & response)
     {
         auto nowTime = boost::posix_time::microsec_clock::local_time();
@@ -120,6 +119,7 @@ void testTcpClientTimeout()
         std::cout << "Response: " << response->getPlatoonId() << "\n";
         std::cout << "FAILED!";
     }));
+
     waiter.await(waitable);
 }
 
@@ -129,27 +129,27 @@ void testMultipleConnections()
     Context context;
     Worker worker{context};
 
-    auto server1 = ServiceServer<PlatoonService>::create(context, 10001);
-    auto server2 = ServiceServer<PlatoonService>::create(context, 10002);
+    ServiceServer<PlatoonService> server1{context, 10001};
+    ServiceServer<PlatoonService> server2{context, 10002};
 
-    server1->advertiseService(
+    server1.advertiseService(
         [](const auto & clientEndpoint, const auto & requestMessage, auto & responseMessage)
         { responseMessage = PlatoonMessage::acceptResponse(1, 42); });
-    server2->advertiseService(
+    server2.advertiseService(
         [](const auto & clientEndpoint, const auto & requestMessage, auto & responseMessage)
         { responseMessage = PlatoonMessage::acceptResponse(2, 43); });
 
     sleep(1);
 
-    auto client = ServiceClient<PlatoonService>::create(context);
+    ServiceClient<PlatoonService> client(context);
     PlatoonMessage response1{}, response2{};
     Waiter waiter{context};
     Waitable waitable1{waiter}, waitable2{waiter};
 
-    client->asyncCall(PlatoonMessage::followerRequest(1), "127.0.0.1", 10001, 5s,
+    client.asyncCall(PlatoonMessage::followerRequest(1), "127.0.0.1", 10001, 5s,
         waitable1([&] (auto error, const auto & response) { response1 = *response; }));
 
-    client->asyncCall(PlatoonMessage::followerRequest(2), "127.0.0.1", 10002, 5s,
+    client.asyncCall(PlatoonMessage::followerRequest(2), "127.0.0.1", 10002, 5s,
         waitable2([&] (auto error, const auto & response) { response2 = *response; }));
 
     waiter.await(waitable1 && waitable2);
@@ -165,30 +165,30 @@ void testStoppingServiceServer()
     Context context;
     Worker worker{context};
 
-    auto server = ServiceServer<PlatoonService>::create(context, 10001);
+    ServiceServer<PlatoonService> server{context, 10001};
 
     auto handler = [](const auto & clientEndpoint, const auto & requestMessage, auto & responseMessage)
     { responseMessage = PlatoonMessage::acceptResponse(requestMessage->getVehicleId(), 1); };
 
-    server->advertiseService(handler);
+    server.advertiseService(handler);
 
     sleep(1);
 
-    auto client = ServiceClient<PlatoonService>::create(context);
-	PlatoonMessage response{};
+    ServiceClient<PlatoonService> client{context};
+    PlatoonMessage response{};
 	Waiter waiter{context};
 	Waitable waitable{waiter};
 	auto callHandler = waitable([&](auto error, const auto & resp) { response = *resp; });
 
-	client->asyncCall(PlatoonMessage::followerRequest(42), "127.0.0.1", 10001, 1s, callHandler);
+	client.asyncCall(PlatoonMessage::followerRequest(42), "127.0.0.1", 10001, 1s, callHandler);
 	waiter.await(waitable);
 	waitable.setWaiting();
 
-	server->stop();
-    while (server->isBusy());
-    server->advertiseService(handler);
+	server.stop();
+    sleep(1);
+    server.advertiseService(handler);
 
-    client->asyncCall(PlatoonMessage::followerRequest(43), "127.0.0.1", 10001, 1s, callHandler);
+    client.asyncCall(PlatoonMessage::followerRequest(43), "127.0.0.1", 10001, 1s, callHandler);
 	waiter.await(waitable);
     if (response.getVehicleId() == 43 && response.getMessageType() == messageTypes::ACCEPT_RESPONSE)
 	    std::cout << "SUCCESS!\n";
@@ -202,13 +202,13 @@ void testAsyncDatagramReceiver()
     Context context;
     Worker worker{context};
 
-    auto receiver = DatagramReceiver<PlatoonMessage>::create(context, 10000);
-    auto sender = DatagramSender<PlatoonMessage>::create(context);
+    DatagramReceiver<PlatoonMessage> receiver{context, 10000};
+    DatagramSender<PlatoonMessage> sender{context};
 
 	Waiter waiter{context};
 	Waitable waitable{waiter};
 
-    receiver->asyncReceive(
+    receiver.asyncReceive(
         3s,
         waitable([](const auto & error, auto & message, const auto & senderHost, auto senderPort)
         {
@@ -220,7 +220,7 @@ void testAsyncDatagramReceiver()
 
     sleep(1);
 
-    sender->asyncSend(PlatoonMessage::followerRequest(42), "127.0.0.1", 10000, 5s, [](auto && ...) {});
+    sender.asyncSend(PlatoonMessage::followerRequest(42), "127.0.0.1", 10000, 5s, [](auto && ...) {});
 	waiter.await(waitable);
 }
 
@@ -229,20 +229,20 @@ void testPeriodicTimer()
     Context context;
     Worker worker{context};
 
-    auto timer = Timer::create(context);
+    Timer timer{context};
     Waiter waiter{context};
     Waitable waitable{waiter};
 
     int run = 0;
     auto startTime = time::now();
-    timer->startPeriodicTimeout(
+    timer.startPeriodicTimeout(
         1s,
         [&]
         {
             if (run >= 3)
             {
                 std::cout << "SUCCESS!\n";
-                timer->stop();
+                timer.stop();
 	            waitable.setReady();
                 return;
             }
@@ -268,9 +268,9 @@ void testServiceClientAsyncCallTimeout()
     Context context1, context2;
 	Worker worker1{context1}, worker2{context2};
 
-    auto server = ServiceServer<PlatoonService>::create(context1, 10001);
+    ServiceServer<PlatoonService> server{context1, 10001};
 
-    server->advertiseService(
+    server.advertiseService(
         [](const auto & clientEndpoint, const auto & requestMessage, auto & responseMessage)
         {
             sleep(3);
@@ -279,12 +279,12 @@ void testServiceClientAsyncCallTimeout()
 
     sleep(1);
 
-    auto client = ServiceClient<PlatoonService>::create(context2);
+    ServiceClient<PlatoonService> client{context2};
     Waiter waiter{context2};
     Waitable waitable{waiter};
 
 	PlatoonMessage response;
-	client->asyncCall(
+	client.asyncCall(
 		PlatoonMessage::followerRequest(1), "127.0.0.1", 10001, 1s,
 		waitable([](const auto & error, const auto & response)
 		         {
@@ -301,13 +301,13 @@ void testDatagramSenderAsyncSend()
     Context context;
     Worker worker{context};
 
-    auto receiver = DatagramReceiver<PlatoonMessage>::create(context, 10000);
-    auto sender = DatagramSender<PlatoonMessage>::create(context);
+    DatagramReceiver<PlatoonMessage> receiver{context, 10000};
+    DatagramSender<PlatoonMessage> sender{context};
 
     Waiter waiter{context};
     Waitable waitable{waiter};
 
-    receiver->asyncReceive(
+    receiver.asyncReceive(
         3s,
         waitable([](const auto & error, auto & message, const std::string & senderHost, auto senderPort)
         {
@@ -322,7 +322,7 @@ void testDatagramSenderAsyncSend()
                 std::cout << "SUCCESS!\n";
         }));
 
-	sender->asyncSend(
+    sender.asyncSend(
 		PlatoonMessage::acceptResponse(1, 42), "127.0.0.1", 10000, 1s,
 		[](const auto & error)
         {
@@ -339,8 +339,8 @@ void testDatagramSenderQueuedSending()
     Context context;
     Worker worker{context};
 
-    auto receiver = DatagramReceiver<PlatoonMessage>::create(context, 10000);
-    auto sender = DatagramSender<PlatoonMessage>::create(context);
+    DatagramReceiver<PlatoonMessage> receiver(context, 10000);
+    DatagramSender<PlatoonMessage> sender(context);
 
     std::atomic<bool> running{true};
     std::atomic<std::size_t> receivedMessages{0};
@@ -374,14 +374,14 @@ void testDatagramSenderQueuedSending()
             return;
         }
 
-        receiver->asyncReceive(1s, receiveHandler);
+        receiver.asyncReceive(1s, receiveHandler);
     };
 
-    receiver->asyncReceive(1s, receiveHandler);
+    receiver.asyncReceive(1s, receiveHandler);
 
     for (std::size_t i = 0; i < sentMessages; ++i)
     {
-	    sender->asyncSend(
+	    sender.asyncSend(
 		    PlatoonMessage::acceptResponse(1, i), "127.0.0.1", 10000, 1s,
             [](const auto & error)
             {
@@ -397,11 +397,11 @@ void testResolver()
 {
     Context context;
     Worker worker{context};
-    auto resolver = Resolver::create(context);
+    Resolver resolver{context};
     Waiter waiter{context};
     Waitable waitable{waiter};
 
-    resolver->asyncResolve(
+    resolver.asyncResolve(
         "google.de", "http", 5s,
         waitable([](const auto & error, const auto & endpoints)
         {
@@ -425,13 +425,13 @@ void testStringMessageOverDatagram()
     Context context;
     Worker worker{context};
 
-    auto receiver = DatagramReceiver<std::string>::create(context, 10000);
-    auto sender = DatagramSender<std::string>::create(context);
+    DatagramReceiver<std::string> receiver{context, 10000};
+    DatagramSender<std::string> sender{context};
 
     Waiter waiter{context};
     Waitable waitable{waiter};
 
-    receiver->asyncReceive(
+    receiver.asyncReceive(
         3s, waitable([&](const auto & error, auto & message, const std::string & senderHost, auto senderPort)
         {
             std::cout << "received: host: " << senderHost << " port: " << senderPort << " message: " << *message << "\n";
@@ -441,7 +441,7 @@ void testStringMessageOverDatagram()
 
     sleep(1);
 
-    sender->asyncSend("Hello World!", "127.0.0.1", 10000, 3s);
+    sender.asyncSend("Hello World!", "127.0.0.1", 10000, 3s);
     waiter.await(waitable);
 }
 
@@ -450,15 +450,15 @@ void testStringMessageOverService()
     Context context;
     Worker worker{context};
 
-    auto server = ServiceServer<StringService>::create(context, 10000);
-    auto client = ServiceClient<StringService>::create(context);
+    ServiceServer<StringService> server{context, 10000};
+    ServiceClient<StringService> client{context};
 
     Waiter waiter{context};
     Waitable waitable{waiter};
 
     std::atomic<bool> failed{false};
 
-    server->advertiseService(
+    server.advertiseService(
         [&](const auto & endpoint, const auto & request, auto & response)
         {
             if (*request != "Ping")
@@ -470,7 +470,7 @@ void testStringMessageOverService()
 
     std::string response;
 
-    client->asyncCall("Ping", "127.0.0.1", 10000, 3s,
+    client.asyncCall("Ping", "127.0.0.1", 10000, 3s,
                       waitable([&](auto error, const auto & resp) { response = *resp; }));
 
     waiter.await(waitable);
@@ -487,8 +487,8 @@ void testServiceServerMaxMessageSize()
     Context context;
     Worker worker{context};
 
-    auto server = ServiceServer<StringService>::create(context, 10000, 100);
-    server->advertiseService(
+    ServiceServer<StringService> server{context, 10000, 100};
+    server.advertiseService(
         [](auto && ...)
         {
             std::cout << "FAILED! (This should not have been called!\n";
@@ -496,11 +496,11 @@ void testServiceServerMaxMessageSize()
 
     sleep(1);
 
-    auto client = ServiceClient<StringService>::create(context, 200);
+    ServiceClient<StringService> client{context, 200};
 	Waiter waiter{context};
 	Waitable waitable{waiter};
 
-    client->asyncCall(
+    client.asyncCall(
         std::string(200, 'a'), "127.0.0.1", 10000, 1s,
         waitable([&](const auto & error, const auto & message)
         {
@@ -516,8 +516,8 @@ void testServiceClientMaxMessageSize()
     Context context;
     Worker worker{context};
 
-    auto server = ServiceServer<StringService>::create(context, 10000, 200);
-    server->advertiseService(
+    ServiceServer<StringService> server{context, 10000, 200};
+    server.advertiseService(
         [&](const auto & endpoint, const auto & request, auto & response)
         {
             response = std::string(200, 'a');
@@ -525,11 +525,11 @@ void testServiceClientMaxMessageSize()
 
     sleep(1);
 
-    auto client = ServiceClient<StringService>::create(context, 100);
+    ServiceClient<StringService> client{context, 100};
     Waiter waiter{context};
     Waitable waitable{waiter};
 
-    client->asyncCall(
+    client.asyncCall(
         std::string(100, 'a'), "127.0.0.1", 10000, 1s,
         waitable([&](const auto & error, const auto & message)
         {
@@ -545,13 +545,13 @@ void testDatagramReceiverMaxMessageSize()
 	Context context;
 	Worker worker{context};
 
-	auto receiver = DatagramReceiver<std::string>::create(context, 10000, 100);
-	auto sender = DatagramSender<std::string>::create(context);
+	DatagramReceiver<std::string> receiver{context, 10000, 100};
+	DatagramSender<std::string> sender{context};
 
 	Waiter waiter{context};
 	Waitable waitable{waiter};
 
-	receiver->asyncReceive(
+	receiver.asyncReceive(
 		1s,
 		waitable([&](const auto & error, auto && ... args)
 		{
@@ -561,7 +561,7 @@ void testDatagramReceiverMaxMessageSize()
 				std::cout << "FAILED! (This should not be called!\n";
 		}));
 
-	sender->asyncSend(std::string(200, 'a'), "127.0.0.1", 10000, 1s);
+	sender.asyncSend(std::string(200, 'a'), "127.0.0.1", 10000, 1s);
 
 	waiter.await(waitable);
 }
@@ -574,10 +574,10 @@ void testServiceLargeTransferSize()
     std::size_t transferSize = 0x10000;
     std::string data(transferSize, 'a');
     std::atomic<bool> success{true};
-    auto server = ServiceServer<StringService>::create(context, 10000, transferSize);
-    auto client = ServiceClient<StringService>::create(context, transferSize);
+    ServiceServer<StringService> server{context, 10000, transferSize};
+    ServiceClient<StringService> client{context, transferSize};
 
-    server->advertiseService(
+    server.advertiseService(
         [&](const auto & endpoint, const auto & request, auto & response)
         {
             if (*request != data)
@@ -589,7 +589,7 @@ void testServiceLargeTransferSize()
     Waiter waiter{context};
     Waitable waitable{waiter};
 
-    client->asyncCall(
+    client.asyncCall(
         data, "127.0.0.1", 10000, 10s,
         waitable([&](const auto & error, const auto & message)
         {
@@ -607,12 +607,12 @@ void testNonCopyableMessage()
 
     Context context;
     Worker worker{context};
-    auto sender = DatagramSender<NonCopyableMessage>::create(context);
-    auto receiver = DatagramReceiver<NonCopyableMessage>::create(context, 10000);
-    sender->asyncSend(NonCopyableMessage{}, "127.0.0.1", 10000, 0s);
+    DatagramReceiver<NonCopyableMessage> receiver{context, 10000};
+    DatagramSender<NonCopyableMessage> sender{context};
+    sender.asyncSend(NonCopyableMessage{}, "127.0.0.1", 10000, 0s);
     std::string host;
     std::uint16_t port;
-	receiver->asyncReceive(0s, [](auto && ...) {});
+    receiver.asyncReceive(0s, [](auto && ...) {});
     std::cout << "SUCCESS!\n";
 }
 

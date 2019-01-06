@@ -2,10 +2,14 @@
 
 ### implementation
 - google test
-- no need for enforcing everything shared_ptr since it suffices to pass only an all-containing self pointer into any handler
-- CMAKE installation
+- remove Closer from AsyncState in Client
+- update Error.h
+- repalcement for Busylock: stop(); waitUntilReady; runOperation()
+    - for Timer (!!!), DatagramReceiver, ServiceServer
 
 ### documentation
 - doxygen 
 - examples
 - README
+
+- CMAKE installation
