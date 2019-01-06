@@ -56,7 +56,7 @@ void testAsyncServices()
     {
         Waitable waitable{waiter};
         client->asyncCall(
-            PlatoonMessage::followerRequest(2), "127.0.0.1", 10001, 1s,
+            PlatoonMessage::followerRequest(2).toPtr(), "127.0.0.1", 10001, 1s,
             waitable([&](const auto & error, const auto & response)
             {
                 if (error)
@@ -107,7 +107,7 @@ void testTcpClientTimeout()
 
     auto startTime = boost::posix_time::microsec_clock::local_time();
 
-    client->asyncCall(PlatoonMessage::followerRequest(2), "127.0.0.1", 10001, timeout,
+    client->asyncCall(PlatoonMessage::followerRequest(2).toPtr(), "127.0.0.1", 10001, timeout,
     waitable([&](const auto & error, const auto & response)
     {
         auto nowTime = boost::posix_time::microsec_clock::local_time();
@@ -146,10 +146,10 @@ void testMultipleConnections()
     Waiter waiter{context};
     Waitable waitable1{waiter}, waitable2{waiter};
 
-    client->asyncCall(PlatoonMessage::followerRequest(1), "127.0.0.1", 10001, 5s,
+    client->asyncCall(PlatoonMessage::followerRequest(1).toPtr(), "127.0.0.1", 10001, 5s,
         waitable1([&] (auto error, const auto & response) { response1 = *response; }));
 
-    client->asyncCall(PlatoonMessage::followerRequest(2), "127.0.0.1", 10002, 5s,
+    client->asyncCall(PlatoonMessage::followerRequest(2).toPtr(), "127.0.0.1", 10002, 5s,
         waitable2([&] (auto error, const auto & response) { response2 = *response; }));
 
     waiter.await(waitable1 && waitable2);
@@ -180,7 +180,7 @@ void testStoppingServiceServer()
 	Waitable waitable{waiter};
 	auto callHandler = waitable([&](auto error, const auto & resp) { response = *resp; });
 
-	client->asyncCall(PlatoonMessage::followerRequest(42), "127.0.0.1", 10001, 1s, callHandler);
+	client->asyncCall(PlatoonMessage::followerRequest(42).toPtr(), "127.0.0.1", 10001, 1s, callHandler);
 	waiter.await(waitable);
 	waitable.setWaiting();
 
@@ -188,7 +188,7 @@ void testStoppingServiceServer()
     while (server->isBusy());
     server->advertiseService(handler);
 
-    client->asyncCall(PlatoonMessage::followerRequest(43), "127.0.0.1", 10001, 1s, callHandler);
+    client->asyncCall(PlatoonMessage::followerRequest(43).toPtr(), "127.0.0.1", 10001, 1s, callHandler);
 	waiter.await(waitable);
     if (response.getVehicleId() == 43 && response.getMessageType() == messageTypes::ACCEPT_RESPONSE)
 	    std::cout << "SUCCESS!\n";
@@ -220,7 +220,7 @@ void testAsyncDatagramReceiver()
 
     sleep(1);
 
-    sender->asyncSend(std::make_shared<PlatoonMessage>(PlatoonMessage::followerRequest(42)), "127.0.0.1", 10000, 5s, [](auto && ...) {});
+    sender->asyncSend(PlatoonMessage::followerRequest(42).toPtr(), "127.0.0.1", 10000, 5s, [](auto && ...) {});
 	waiter.await(waitable);
 }
 
@@ -285,7 +285,7 @@ void testServiceClientAsyncCallTimeout()
 
 	PlatoonMessage response;
 	client->asyncCall(
-		PlatoonMessage::followerRequest(1), "127.0.0.1", 10001, 1s,
+		PlatoonMessage::followerRequest(1).toPtr(), "127.0.0.1", 10001, 1s,
 		waitable([](const auto & error, const auto & response)
 		         {
 			         if (error == error::codes::ABORTED)
@@ -322,9 +322,9 @@ void testDatagramSenderAsyncSend()
                 std::cout << "SUCCESS!\n";
         }));
 
-    sender->asyncSend(
-        std::make_shared<PlatoonMessage>(PlatoonMessage::acceptResponse(1, 42)), "127.0.0.1", 10000, 1s,
-        [](const auto & error)
+	sender->asyncSend(
+		PlatoonMessage::acceptResponse(1, 42).toPtr(), "127.0.0.1", 10000, 1s,
+		[](const auto & error)
         {
             if (error)
                 std::cout << "FAILED! (send error)\n";
@@ -381,8 +381,8 @@ void testDatagramSenderQueuedSending()
 
     for (std::size_t i = 0; i < sentMessages; ++i)
     {
-        sender->asyncSend(
-            std::make_shared<PlatoonMessage>(PlatoonMessage::acceptResponse(1, i)), "127.0.0.1", 10000, 1s,
+	    sender->asyncSend(
+		    PlatoonMessage::acceptResponse(1, i).toPtr(), "127.0.0.1", 10000, 1s,
             [](const auto & error)
             {
                 if (error)
@@ -470,7 +470,7 @@ void testStringMessageOverService()
 
     std::string response;
 
-    client->asyncCall(std::string{"Ping"}, "127.0.0.1", 10000, 3s,
+    client->asyncCall(std::make_shared<std::string>("Ping"), "127.0.0.1", 10000, 3s,
                       waitable([&](auto error, const auto & resp) { response = *resp; }));
 
     waiter.await(waitable);
@@ -501,7 +501,7 @@ void testServiceServerMaxMessageSize()
 	Waitable waitable{waiter};
 
     client->asyncCall(
-        std::string(200, 'a'), "127.0.0.1", 10000, 1s,
+        std::make_shared<std::string>(std::string(200, 'a')), "127.0.0.1", 10000, 1s,
         waitable([&](const auto & error, const auto & message)
         {
             if (error == error::codes::FAILED_OPERATION)
@@ -530,7 +530,7 @@ void testServiceClientMaxMessageSize()
     Waitable waitable{waiter};
 
     client->asyncCall(
-        std::string(100, 'a'), "127.0.0.1", 10000, 1s,
+        std::make_shared<std::string>(std::string(100, 'a')), "127.0.0.1", 10000, 1s,
         waitable([&](const auto & error, const auto & message)
         {
             if (error == error::codes::FAILED_OPERATION)
@@ -590,7 +590,7 @@ void testServiceLargeTransferSize()
     Waitable waitable{waiter};
 
     client->asyncCall(
-        data, "127.0.0.1", 10000, 10s,
+        std::make_shared<std::string>(data), "127.0.0.1", 10000, 10s,
         waitable([&](const auto & error, const auto & message)
         {
             if (error || *message != data)

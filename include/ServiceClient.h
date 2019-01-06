@@ -50,7 +50,7 @@ public:
 		  , queuedExecutor(utils::QueuedExecutor::create(context))
 	{}
 
-	void asyncCall(const RequestMessage & request,
+	void asyncCall(std::shared_ptr<RequestMessage> request,
 	               const std::string & host,
 	               std::uint16_t port,
 	               const time::Duration & timeout,
@@ -101,10 +101,10 @@ private:
 	utils::QueuedExecutor::Ptr queuedExecutor;
 
 	void asyncCallOperation(const CallHandler & handler,
-	                    const RequestMessage & request,
-	                    const std::string & host,
-	                    std::uint16_t port,
-	                    const time::Duration & timeout)
+		                    std::shared_ptr<RequestMessage> request,
+		                    const std::string & host,
+		                    std::uint16_t port,
+		                    const time::Duration & timeout)
 	{
 		auto self = this->shared_from_this();
 		// Container for our variables which are needed for the subsequent asynchronous calls to connect, receive and send.
@@ -130,7 +130,7 @@ private:
 
 				// Send the request.
 				asionet::message::asyncSend(
-					state->self->context, state->self->socket, request, state->timeout,
+					state->self->context, state->self->socket, *request, state->timeout,
 					[state](const auto & error)
 					{
 						if (error)

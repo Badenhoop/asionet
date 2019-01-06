@@ -56,6 +56,9 @@ public:
     PlatoonId getPlatoonId() const
     { return platoonId; }
 
+    std::shared_ptr<PlatoonMessage> toPtr()
+    { return std::make_shared<PlatoonMessage>(vehicleId, messageType, platoonId); }
+
 private:
     VehicleId vehicleId;
     MessageType messageType;
