@@ -7,508 +7,489 @@
 #include <boost/asio/ip/tcp.hpp>
 #include <iostream>
 #include "../include/ServiceServer.h"
-#include "PlatoonService.h"
+#include "TestService.h"
 #include "../include/ServiceClient.h"
 #include "../include/DatagramReceiver.h"
 #include "../include/DatagramSender.h"
 #include "../include/Worker.h"
 #include "../include/WorkerPool.h"
 #include "../include/WorkSerializer.h"
+#include <gtest/gtest.h>
 
 using boost::asio::ip::tcp;
 
 using namespace std::chrono_literals;
+using namespace protocol;
 
 namespace asionet
 {
 namespace test
 {
 
-void testAsyncServices()
+template<typename Test>
+void runTest1(std::size_t numWorkers = 1)
 {
-    using namespace protocol;
-    Context context;
-    Worker worker{context};
+    asionet::Context context;
+    WorkerPool workers{context, numWorkers};
+    auto test = std::make_shared<Test>(context);
+    test->run();
+}
 
-    ServiceServer<PlatoonService> server{context, 10001};
-    server.advertiseService(
-        [](const auto & clientEndpoint, const auto & requestMessage, auto & responseMessage)
-        {
-            std::cout << "Request from "
-                      << (int) requestMessage->getVehicleId()
-                      << " with type: "
-                      << (int) requestMessage->getMessageType()
-                      << "\n";
-            responseMessage = PlatoonMessage::acceptResponse(1, 42);
-        });
+template<typename Test>
+void runTest2()
+{
+    asionet::Context context1, context2;
+    Worker worker1{context1}, worker2{context2};
+    auto test = std::make_shared<Test>(context1, context2);
+    test->run();
+}
 
-    sleep(1);
+struct BasicService : std::enable_shared_from_this<BasicService>
+{
+    ServiceServer<TestService> server;
+    ServiceClient<TestService> client;
+    Waiter waiter;
 
-    std::size_t count = 5;
-    std::atomic<std::size_t> pending{count};
-    std::atomic<std::size_t> correct{0};
-    std::atomic<bool> calling{false};
+    BasicService(asionet::Context & context)
+        : server(context, 10001)
+          , client(context)
+          , waiter(context)
+    {}
 
-    ServiceClient<PlatoonService> client{context};
-    Waiter waiter{context};
-
-    for (int i = 0; i < count; i++)
+    void run()
     {
-        Waitable waitable{waiter};
-        client.asyncCall(
-            PlatoonMessage::followerRequest(2), "127.0.0.1", 10001, 1s,
-            waitable([&](const auto & error, const auto & response)
-            {
-                if (error)
-                    std::cout << "FAILED!\n";
-                else
-                {
-                    std::cout << "Response from " << (int) response->getVehicleId() << " with type: "
-                              << (int) response->getMessageType()
-                              << " and platoonId: " << (int) response->getPlatoonId() << "\n";
-                    if (response->getVehicleId() == 1 && response->getPlatoonId() == 42)
-                        correct++;
-                }
+	    auto self = shared_from_this();
+        constexpr std::size_t numCalls{5};
+        std::atomic<std::size_t> correct{0};
 
-                pending--;
-            }));
+        server.advertiseService(
+            [self](const auto & clientEndpoint, const auto & requestMessage, auto & responseMessage)
+            { responseMessage = TestMessage::response(1, 42); });
+
+        for (int i = 0; i < numCalls; i++)
+        {
+            Waitable waitable{waiter};
+            client.asyncCall(
+                TestMessage::request(2), "127.0.0.1", 10001, 1s,
+                waitable([&, self](const auto & error, const auto & response)
+                         {
+                             EXPECT_FALSE(error);
+                             EXPECT_EQ(response->getId(), 1);
+                             EXPECT_EQ(response->getValue(), 42);
+                             correct++;
+                         }));
+            waiter.await(waitable);
+        }
+
+        EXPECT_EQ(correct, numCalls);
+    }
+};
+
+TEST(asionetTest, BasicService)
+{
+    runTest1<BasicService>();
+}
+
+struct ClientTimeout : std::enable_shared_from_this<ClientTimeout>
+{
+    ServiceServer<TestService> server;
+    ServiceClient<TestService> client;
+    Waiter waiter;
+
+    ClientTimeout(asionet::Context & context1, asionet::Context & context2)
+        : server(context1, 10001)
+          , client(context2)
+          , waiter(context2)
+    {}
+
+    void run()
+    {
+        auto self = shared_from_this();
+
+        const auto timeout = 10ms;
+	    const auto serviceDuration = 11ms;
+
+        server.advertiseService(
+            [&, self](const auto & clientEndpoint, const auto & requestMessage, auto & responseMessage)
+            {
+                std::this_thread::sleep_for(serviceDuration);
+                responseMessage = TestMessage::response(1, 42);
+            });
+
+        Waitable waitable{waiter};
+        auto startTime = asionet::time::now();
+        client.asyncCall(TestMessage::request(2), "127.0.0.1", 10001, timeout,
+                         waitable([&, self](const auto & error, const auto & response)
+                                  {
+                                      auto nowTime = asionet::time::now();
+                                      auto timeSpend = nowTime - startTime;
+                                      auto delta = std::abs(timeSpend - timeout);
+                                      EXPECT_EQ(error, error::aborted);
+                                      EXPECT_LE(delta, 1ms);
+                                  }));
         waiter.await(waitable);
     }
+};
 
-    while (pending > 0);
-    if (correct == count)
-        std::cout << "SUCCESS!\n";
+TEST(asionetTest, ClientTimeout)
+{
+    runTest2<ClientTimeout>();
 }
 
-void testTcpClientTimeout()
+struct MultipleCalls : std::enable_shared_from_this<MultipleCalls>
 {
-    using namespace protocol;
-    Context context1, context2;
-    Worker worker1{context1};
-    Worker worker2{context2};
+	ServiceServer<TestService> server1;
+	ServiceServer<TestService> server2;
+	ServiceClient<TestService> client;
+	TestMessage response1{}, response2{};
+	Waiter waiter;
+	Waitable waitable1{waiter}, waitable2{waiter};
 
-    const auto timeout = 3s;
+    MultipleCalls(Context & context)
+        : server1(context, 10001)
+        , server2(context, 10002)
+        , client(context)
+        , waiter(context)
+    {}
 
-    ServiceServer<PlatoonService> server{context1, 10001};
-    server.advertiseService(
-        [](const auto & clientEndpoint, const auto & requestMessage, auto & responseMessage)
-        {
-            // Just sleep for 5 seconds.
-            sleep(4);
-            responseMessage = PlatoonMessage::acceptResponse(1, 42);
-        });
-
-    sleep(1);
-
-    ServiceClient<PlatoonService> client{context2};
-    Waiter waiter{context2};
-    Waitable waitable{waiter};
-
-    auto startTime = boost::posix_time::microsec_clock::local_time();
-
-    client.asyncCall(PlatoonMessage::followerRequest(2), "127.0.0.1", 10001, timeout,
-    waitable([&](const auto & error, const auto & response)
+    void run()
     {
-        auto nowTime = boost::posix_time::microsec_clock::local_time();
-        auto timeSpend = nowTime - startTime;
-        if (error == error::codes::ABORTED && timeSpend.seconds() >= 2)
-        {
-            std::cout << "SUCCESS!\n";
-            return;
-        }
-        std::cout << "Response: " << response->getPlatoonId() << "\n";
-        std::cout << "FAILED!";
-    }));
+        auto self = shared_from_this();
+        server1.advertiseService(
+            [self](const auto & clientEndpoint, const auto & requestMessage, auto & responseMessage)
+            { responseMessage = TestMessage::response(1, 42); });
+        server2.advertiseService(
+            [self](const auto & clientEndpoint, const auto & requestMessage, auto & responseMessage)
+            { responseMessage = TestMessage::response(2, 43); });
 
-    waiter.await(waitable);
-}
+        client.asyncCall(TestMessage::request(1), "127.0.0.1", 10001, 5s,
+                         waitable1([&, self] (const auto & error, const auto & response) { response1 = *response; }));
 
-void testMultipleConnections()
-{
-    using namespace protocol;
-    Context context;
-    Worker worker{context};
+        client.asyncCall(TestMessage::request(2), "127.0.0.1", 10002, 5s,
+                         waitable2([&, self] (const auto & error, const auto & response) { response2 = *response; }));
 
-    ServiceServer<PlatoonService> server1{context, 10001};
-    ServiceServer<PlatoonService> server2{context, 10002};
+        waiter.await(waitable1 && waitable2);
 
-    server1.advertiseService(
-        [](const auto & clientEndpoint, const auto & requestMessage, auto & responseMessage)
-        { responseMessage = PlatoonMessage::acceptResponse(1, 42); });
-    server2.advertiseService(
-        [](const auto & clientEndpoint, const auto & requestMessage, auto & responseMessage)
-        { responseMessage = PlatoonMessage::acceptResponse(2, 43); });
-
-    sleep(1);
-
-    ServiceClient<PlatoonService> client(context);
-    PlatoonMessage response1{}, response2{};
-    Waiter waiter{context};
-    Waitable waitable1{waiter}, waitable2{waiter};
-
-    client.asyncCall(PlatoonMessage::followerRequest(1), "127.0.0.1", 10001, 5s,
-        waitable1([&] (auto error, const auto & response) { response1 = *response; }));
-
-    client.asyncCall(PlatoonMessage::followerRequest(2), "127.0.0.1", 10002, 5s,
-        waitable2([&] (auto error, const auto & response) { response2 = *response; }));
-
-    waiter.await(waitable1 && waitable2);
-
-    if (response1.getVehicleId() == 1 && response1.getPlatoonId() == 42 &&
-        response2.getVehicleId() == 2 && response2.getPlatoonId() == 43)
-        std::cout << "SUCCESS!\n";
-}
-
-void testStoppingServiceServer()
-{
-    using namespace protocol;
-    Context context;
-    Worker worker{context};
-
-    ServiceServer<PlatoonService> server{context, 10001};
-
-    auto handler = [](const auto & clientEndpoint, const auto & requestMessage, auto & responseMessage)
-    { responseMessage = PlatoonMessage::acceptResponse(requestMessage->getVehicleId(), 1); };
-
-    server.advertiseService(handler);
-
-    sleep(1);
-
-    ServiceClient<PlatoonService> client{context};
-    PlatoonMessage response{};
-	Waiter waiter{context};
-	Waitable waitable{waiter};
-	auto callHandler = waitable([&](auto error, const auto & resp) { response = *resp; });
-
-	client.asyncCall(PlatoonMessage::followerRequest(42), "127.0.0.1", 10001, 1s, callHandler);
-	waiter.await(waitable);
-	waitable.setWaiting();
-
-	server.stop();
-    sleep(1);
-    server.advertiseService(handler);
-
-    client.asyncCall(PlatoonMessage::followerRequest(43), "127.0.0.1", 10001, 1s, callHandler);
-	waiter.await(waitable);
-    if (response.getVehicleId() == 43 && response.getMessageType() == messageTypes::ACCEPT_RESPONSE)
-	    std::cout << "SUCCESS!\n";
-    else
-	    std::cout << "FAILURE!\n";
-}
-
-void testAsyncDatagramReceiver()
-{
-    using namespace protocol;
-    Context context;
-    Worker worker{context};
-
-    DatagramReceiver<PlatoonMessage> receiver{context, 10000};
-    DatagramSender<PlatoonMessage> sender{context};
-
-	Waiter waiter{context};
-	Waitable waitable{waiter};
-
-    receiver.asyncReceive(
-        3s,
-        waitable([](const auto & error, auto & message, const auto & senderHost, auto senderPort)
-        {
-            if (!error && message->getVehicleId() == 42)
-                std::cout << "SUCCESS! Received message from: " << message->getVehicleId() << "\n";
-            else
-                std::cout << "FAILED!\n";
-        }));
-
-    sleep(1);
-
-    sender.asyncSend(PlatoonMessage::followerRequest(42), "127.0.0.1", 10000, 5s, [](auto && ...) {});
-	waiter.await(waitable);
-}
-
-void testPeriodicTimer()
-{
-    Context context;
-    Worker worker{context};
-
-    Timer timer{context};
-    Waiter waiter{context};
-    Waitable waitable{waiter};
-
-    int run = 0;
-    auto startTime = time::now();
-    timer.startPeriodicTimeout(
-        1s,
-        [&]
-        {
-            if (run >= 3)
-            {
-                std::cout << "SUCCESS!\n";
-                timer.stop();
-	            waitable.setReady();
-                return;
-            }
-
-            auto deltaTime = std::chrono::duration_cast<std::chrono::milliseconds>(time::now() - startTime);
-            startTime = time::now();
-            std::cout << "Delta time [ms]: " << deltaTime.count() << "\n";
-            if (std::abs(1s - deltaTime) > 2ms)
-            {
-	            std::cout << "FAILED!\n";
-	            waitable.setReady();
-            }
-            run++;
-        });
-
-    waiter.await(waitable);
-}
-
-void testServiceClientAsyncCallTimeout()
-{
-    using namespace protocol;
-    // two contexts because event loop blocking with sleep -> can't simulate timeout
-    Context context1, context2;
-	Worker worker1{context1}, worker2{context2};
-
-    ServiceServer<PlatoonService> server{context1, 10001};
-
-    server.advertiseService(
-        [](const auto & clientEndpoint, const auto & requestMessage, auto & responseMessage)
-        {
-            sleep(3);
-            responseMessage = PlatoonMessage::acceptResponse(1, 42);
-        });
-
-    sleep(1);
-
-    ServiceClient<PlatoonService> client{context2};
-    Waiter waiter{context2};
-    Waitable waitable{waiter};
-
-	PlatoonMessage response;
-	client.asyncCall(
-		PlatoonMessage::followerRequest(1), "127.0.0.1", 10001, 1s,
-		waitable([](const auto & error, const auto & response)
-		         {
-			         if (error == error::codes::ABORTED)
-				         std::cout << "SUCCESS!\n";
-		         }));
-
-	waiter.await(waitable);
-}
-
-void testDatagramSenderAsyncSend()
-{
-    using namespace protocol;
-    Context context;
-    Worker worker{context};
-
-    DatagramReceiver<PlatoonMessage> receiver{context, 10000};
-    DatagramSender<PlatoonMessage> sender{context};
-
-    Waiter waiter{context};
-    Waitable waitable{waiter};
-
-    receiver.asyncReceive(
-        3s,
-        waitable([](const auto & error, auto & message, const std::string & senderHost, auto senderPort)
-        {
-            if (error)
-            {
-                std::cout << "FAILED! (receive error)\n";
-                return;
-            }
-
-            std::cout << "Sender host: " << senderHost << "\nSender Port: " << senderPort << "\n";
-            if (message->getPlatoonId() == 42)
-                std::cout << "SUCCESS!\n";
-        }));
-
-    sender.asyncSend(
-		PlatoonMessage::acceptResponse(1, 42), "127.0.0.1", 10000, 1s,
-		[](const auto & error)
-        {
-            if (error)
-                std::cout << "FAILED! (send error)\n";
-        });
-
-    waiter.await(waitable);
-}
-
-void testDatagramSenderQueuedSending()
-{
-    using namespace protocol;
-    Context context;
-    Worker worker{context};
-
-    DatagramReceiver<PlatoonMessage> receiver(context, 10000);
-    DatagramSender<PlatoonMessage> sender(context);
-
-    std::atomic<bool> running{true};
-    std::atomic<std::size_t> receivedMessages{0};
-    constexpr std::size_t sentMessages{10};
-
-    DatagramReceiver<PlatoonMessage>::ReceiveHandler receiveHandler = [&](const auto & error, auto & message, const std::string & senderHost, auto senderPort)
-    {
-        if (error)
-        {
-            std::cout << "FAILED! (receive error)\n";
-            running = false;
-            return;
-        }
-
-        auto i = message->getPlatoonId();
-
-        if (i != receivedMessages)
-        {
-            std::cout << "FAILED! (incorrect order)\n";
-            running = false;
-            return;
-        }
-
-        std::cout << "Received message #" << i << "\n";
-
-        receivedMessages++;
-        if (receivedMessages == sentMessages)
-        {
-            std::cout << "SUCCESS\n";
-            running = false;
-            return;
-        }
-
-        receiver.asyncReceive(1s, receiveHandler);
-    };
-
-    receiver.asyncReceive(1s, receiveHandler);
-
-    for (std::size_t i = 0; i < sentMessages; ++i)
-    {
-	    sender.asyncSend(
-		    PlatoonMessage::acceptResponse(1, i), "127.0.0.1", 10000, 1s,
-            [](const auto & error)
-            {
-                if (error)
-                    std::cout << "FAILED! (send error)\n";
-            });
+        EXPECT_EQ(response1.getId(), 1);
+        EXPECT_EQ(response2.getId(), 2);
+        EXPECT_EQ(response1.getValue(), 42);
+        EXPECT_EQ(response2.getValue(), 43);
     }
+};
 
-    while (running);
+TEST(asionetTest, MultipleCalls)
+{
+	runTest1<MultipleCalls>();
 }
 
-void testResolver()
+struct StoppingServer : std::enable_shared_from_this<StoppingServer>
 {
-    Context context;
-    Worker worker{context};
-    Resolver resolver{context};
-    Waiter waiter{context};
-    Waitable waitable{waiter};
+    ServiceServer<TestService> server;
+    ServiceClient<TestService> client;
+    Waiter waiter;
 
-    resolver.asyncResolve(
-        "google.de", "http", 5s,
-        waitable([](const auto & error, const auto & endpoints)
-        {
-            if (error)
+    StoppingServer(Context & context)
+        : server(context, 10001)
+          , client(context)
+          , waiter(context)
+    {}
+
+    void run()
+    {
+        auto self = shared_from_this();
+
+        auto handler = [self](const auto & clientEndpoint, const auto & requestMessage, auto & responseMessage)
+        { responseMessage = TestMessage::response(requestMessage->getId(), 1); };
+
+        server.advertiseService(handler);
+
+        TestMessage response{};
+        Waitable waitable{waiter};
+        auto callHandler = waitable([&, self](const auto & error, const auto & resp) { response = *resp; });
+
+        client.asyncCall(TestMessage::request(42), "127.0.0.1", 10001, 1s, callHandler);
+        waiter.await(waitable);
+        waitable.setWaiting();
+
+        server.stop();
+        server.advertiseService(handler);
+
+        client.asyncCall(TestMessage::request(43), "127.0.0.1", 10001, 1s, callHandler);
+        waiter.await(waitable);
+
+        EXPECT_EQ(response.getId(), 43);
+        EXPECT_EQ(response.getMessageType(), messageTypes::RESPONSE);
+    }
+};
+
+TEST(asionetTest, StoppingServer)
+{
+    runTest1<StoppingServer>();
+}
+
+struct BasicDatagram : std::enable_shared_from_this<BasicDatagram>
+{
+    DatagramReceiver<TestMessage> receiver;
+    DatagramSender<TestMessage> sender;
+    Waiter waiter;
+
+    BasicDatagram(asionet::Context & context)
+        : receiver(context, 10000)
+        , sender(context)
+        , waiter(context)
+    {}
+
+    void run()
+    {
+        auto self = shared_from_this();
+        Waitable waitable{waiter};
+        receiver.asyncReceive(
+            1s,
+            waitable([self](const auto & error, auto & message, const auto & senderHost, auto senderPort)
+                     {
+                         EXPECT_FALSE(error);
+                         EXPECT_EQ(message->getId(), 42);
+                     }));
+        sender.asyncSend(TestMessage::request(42), "127.0.0.1", 10000, 1s, [](const auto & error) { EXPECT_FALSE(error); });
+        waiter.await(waitable);
+    }
+};
+
+TEST(asionetTest, BasicDatagram)
+{
+    runTest1<BasicDatagram>();
+}
+
+struct PeriodicTimeout : std::enable_shared_from_this<PeriodicTimeout>
+{
+    Timer timer;
+    Waiter waiter;
+
+    PeriodicTimeout(asionet::Context & context)
+        : timer(context)
+          , waiter(context)
+    {}
+
+    void run()
+    {
+        auto self = shared_from_this();
+        std::atomic<std::size_t> run{0};
+        std::size_t runs = 5;
+        auto startTime = time::now();
+        auto period = 10ms;
+        Waitable waitable{waiter};
+        timer.startPeriodicTimeout(
+            period,
+            [&, self]
             {
-                std::cout << "FAILURE!\n";
-                return;
-            }
+                if (run >= runs)
+                {
+                    timer.stop();
+                    waitable.setReady();
+                    return;
+                }
 
-            for (const auto & endpoint : endpoints)
-                std::cout << "ip: " << endpoint.ip << " port: " << endpoint.port << "\n";
+                auto periodTime = time::now() - startTime;
+                startTime = time::now();
+                auto delta = std::abs(periodTime - period);
+                EXPECT_LE(delta, 1ms);
+                run++;
+            });
+        waiter.await(waitable);
+    }
+};
 
-            std::cout << "SUCCESS!\n";
-        }));
-
-    waiter.await(waitable);
+TEST(asionetTest, PeriodicTimeout)
+{
+    runTest1<PeriodicTimeout>();
 }
 
-void testStringMessageOverDatagram()
+struct QueuedDatagramSending : std::enable_shared_from_this<QueuedDatagramSending>
 {
-    Context context;
-    Worker worker{context};
+	DatagramReceiver<TestMessage> receiver;
+	DatagramSender<TestMessage> sender;
+	Waiter waiter;
 
-    DatagramReceiver<std::string> receiver{context, 10000};
-    DatagramSender<std::string> sender{context};
+	QueuedDatagramSending (asionet::Context & context)
+		: receiver(context, 10000)
+		 , sender(context)
+		 , waiter(context)
+	{}
 
-    Waiter waiter{context};
-    Waitable waitable{waiter};
+	void run()
+	{
+		auto self = shared_from_this();
+		std::atomic<bool> running{true};
+		std::atomic<std::size_t> receivedMessages{0};
+		constexpr std::size_t sentMessages{10};
+		Waitable waitable{waiter};
 
-    receiver.asyncReceive(
-        3s, waitable([&](const auto & error, auto & message, const std::string & senderHost, auto senderPort)
-        {
-            std::cout << "received: host: " << senderHost << " port: " << senderPort << " message: " << *message << "\n";
-            if (*message == "Hello World!")
-                std::cout << "SUCCESS!\n";
-        }));
+		DatagramReceiver<TestMessage>::ReceiveHandler receiveHandler =
+			[&, self](const auto & error, auto & message, const std::string & senderHost, auto senderPort)
+			{
+				EXPECT_FALSE(error);
+				auto i = message->getValue();
+				EXPECT_EQ(i, receivedMessages); // correct order
+				receivedMessages++;
+				if (receivedMessages == sentMessages)
+				{
+					waitable.setReady();
+					return;
+				}
+				receiver.asyncReceive(1s, receiveHandler);
+			};
 
-    sleep(1);
+		receiver.asyncReceive(1s, receiveHandler);
 
-    sender.asyncSend("Hello World!", "127.0.0.1", 10000, 3s);
-    waiter.await(waitable);
+		for (std::size_t i = 0; i < sentMessages; ++i)
+		{
+			sender.asyncSend(
+				TestMessage::response(1, i), "127.0.0.1", 10000, 1s,
+				[self](const auto & error) { EXPECT_FALSE(error); });
+		}
+
+		waiter.await(waitable);
+		EXPECT_EQ(receivedMessages, sentMessages);
+	}
+};
+
+TEST(asionetTest, QueuedDatagramSending)
+{
+	runTest1<QueuedDatagramSending>();
 }
 
-void testStringMessageOverService()
+struct Resolving : std::enable_shared_from_this<Resolving>
 {
-    Context context;
-    Worker worker{context};
+	Resolver resolver;
+	Waiter waiter;
 
-    ServiceServer<StringService> server{context, 10000};
-    ServiceClient<StringService> client{context};
+	Resolving(asionet::Context & context)
+		: resolver(context)
+		  , waiter(context)
+	{}
 
-    Waiter waiter{context};
-    Waitable waitable{waiter};
+	void run()
+	{
+		auto self = shared_from_this();
+		Waitable waitable{waiter};
+		resolver.asyncResolve(
+			"google.de", "http", 5s,
+			waitable([self](const auto & error, const auto & endpoints)
+			         {
+				         EXPECT_FALSE(error);
+			         }));
+		waiter.await(waitable);
+	}
+};
 
-    std::atomic<bool> failed{false};
-
-    server.advertiseService(
-        [&](const auto & endpoint, const auto & request, auto & response)
-        {
-            if (*request != "Ping")
-                failed = true;
-            response = std::string{"Pong"};
-        });
-
-    sleep(1);
-
-    std::string response;
-
-    client.asyncCall("Ping", "127.0.0.1", 10000, 3s,
-                      waitable([&](auto error, const auto & resp) { response = *resp; }));
-
-    waiter.await(waitable);
-
-    if (response != "Pong")
-        failed = true;
-
-    if (!failed)
-        std::cout << "SUCCESS!\n";
+TEST(asionetTest, Resolving)
+{
+	runTest1<Resolving>();
 }
 
-void testServiceServerMaxMessageSize()
+struct StringDatagram : std::enable_shared_from_this<StringDatagram>
 {
-    Context context;
-    Worker worker{context};
+	DatagramReceiver<std::string> receiver;
+	DatagramSender<std::string> sender;
+	Waiter waiter;
 
-    ServiceServer<StringService> server{context, 10000, 100};
-    server.advertiseService(
-        [](auto && ...)
-        {
-            std::cout << "FAILED! (This should not have been called!\n";
-        });
+	StringDatagram(asionet::Context & context)
+		: receiver(context, 10000)
+		  , sender(context)
+		  , waiter(context)
+	{}
 
-    sleep(1);
+	void run()
+	{
+		auto self = shared_from_this();
+		Waitable waitable{waiter};
+		receiver.asyncReceive(
+			1s, waitable([&, self](const auto & error, auto & message, const std::string & senderHost, auto senderPort)
+			             {
+				             EXPECT_FALSE(error);
+				             EXPECT_EQ(*message, "Hello World!");
+			             }));
+		sender.asyncSend("Hello World!", "127.0.0.1", 10000, 1s);
+		waiter.await(waitable);
+	}
+};
 
-    ServiceClient<StringService> client{context, 200};
-	Waiter waiter{context};
-	Waitable waitable{waiter};
+TEST(asionetTest, StringDatagram)
+{
+	runTest1<StringDatagram>();
+}
 
-    client.asyncCall(
-        std::string(200, 'a'), "127.0.0.1", 10000, 1s,
-        waitable([&](const auto & error, const auto & message)
-        {
-            if (error == error::codes::FAILED_OPERATION)
-                std::cout << "SUCCESS!\n";
-        }));
+struct StringOverService : std::enable_shared_from_this<StringOverService>
+{
+	ServiceServer<StringService> server;
+	ServiceClient<StringService> client;
+	Waiter waiter;
 
-    waiter.await(waitable);
+	StringOverService(Context & context)
+		: server(context, 10000)
+		  , client(context)
+		  , waiter(context)
+	{}
+
+	void run()
+	{
+		auto self = shared_from_this();
+		Waitable waitable{waiter};
+		server.advertiseService(
+			[&, self](const auto & endpoint, const auto & request, auto & response)
+			{
+				EXPECT_EQ(*request, "Ping");
+				response = std::string{"Pong"};
+			});
+		client.asyncCall("Ping", "127.0.0.1", 10000, 1s,
+		                 waitable([&, self](const auto & error, const auto & resp)
+		                          {
+			                          EXPECT_FALSE(error);
+			                          EXPECT_EQ(*resp, "Pong");
+		                          }));
+		waiter.await(waitable);
+	}
+};
+
+TEST(asionetTest, StringOverService)
+{
+	runTest1<StringOverService>();
+}
+
+struct MaxMessageSizeServer : std::enable_shared_from_this<MaxMessageSizeServer>
+{
+	ServiceServer<StringService> server;
+	ServiceClient<StringService> client;
+	Waiter waiter;
+
+	MaxMessageSizeServer(Context & context)
+		: server(context, 10000, 100)
+		  , client(context)
+		  , waiter(context)
+	{}
+
+	void run()
+	{
+		auto self = shared_from_this();
+		server.advertiseService(
+			[self](auto && ...)
+			{
+				FAIL();
+			});
+		Waitable waitable{waiter};
+		client.asyncCall(
+			std::string(200, 'a'), "127.0.0.1", 10000, 1s,
+			waitable([&, self](const auto & error, const auto & message)
+			         {
+				         EXPECT_EQ(error, error::failedOperation);
+			         }));
+		waiter.await(waitable);
+	}
+};
+
+TEST(asionetTest, MaxMessageSizeServer)
+{
+	runTest1<MaxMessageSizeServer>();
 }
 
 void testServiceClientMaxMessageSize()
@@ -533,7 +514,7 @@ void testServiceClientMaxMessageSize()
         std::string(100, 'a'), "127.0.0.1", 10000, 1s,
         waitable([&](const auto & error, const auto & message)
         {
-            if (error == error::codes::FAILED_OPERATION)
+            if (error == error::failedOperation)
                 std::cout << "SUCCESS!\n";
         }));
 
@@ -555,7 +536,7 @@ void testDatagramReceiverMaxMessageSize()
 		1s,
 		waitable([&](const auto & error, auto && ... args)
 		{
-			if (error == error::codes::FAILED_OPERATION)
+			if (error == error::failedOperation)
 				std::cout << "SUCCESS!\n";
 			else
 				std::cout << "FAILED! (This should not be called!\n";

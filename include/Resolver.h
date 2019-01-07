@@ -11,7 +11,7 @@
 #include "Utils.h"
 #include "Busyable.h"
 #include "Context.h"
-#include "QueuedExecutor.h"
+#include "OperationQueue.h"
 
 namespace asionet
 {
@@ -73,12 +73,12 @@ public:
         std::uint16_t port;
     };
 
-    using ResolveHandler = std::function<void(const error::ErrorCode & error, const std::vector<Endpoint> & endpoints)>;
+    using ResolveHandler = std::function<void(const error::Error & error, const std::vector<Endpoint> & endpoints)>;
 
     explicit Resolver(asionet::Context & context)
         : context(context)
           , resolver(context)
-          , queuedExecutor(context)
+          , operationQueue(context)
     {}
 
     void asyncResolve(const std::string & host,
@@ -88,13 +88,13 @@ public:
     {
         auto asyncOperation = [this](auto && ... args)
         { this->asyncResolveOperation(std::forward<decltype(args)>(args)...); };
-        queuedExecutor.execute(asyncOperation, handler, host, service, timeout);
+        operationQueue.execute(asyncOperation, handler, host, service, timeout);
     }
 
     void stop()
     {
         closeable::Closer<UnderlyingResolver>::close(resolver);
-        queuedExecutor.clear();
+        operationQueue.clear();
     }
 
 private:
@@ -103,7 +103,7 @@ private:
 
     asionet::Context & context;
     UnderlyingResolver resolver;
-    utils::QueuedExecutor queuedExecutor;
+    utils::OperationQueue operationQueue;
 
     void asyncResolveOperation(const ResolveHandler & handler,
                                const std::string & host,
@@ -122,9 +122,9 @@ private:
             resolveOperation,
             resolver,
             timeout,
-            [this, handler](const auto & networkingError, const auto & boostError, auto endpointIterator)
+            [this, handler](const auto & error, auto endpointIterator)
             {
-                handler(networkingError, this->endpointsFromIterator(endpointIterator));
+                handler(error, this->endpointsFromIterator(endpointIterator));
             },
             query);
     }

@@ -16,69 +16,38 @@ namespace error
 
 using ErrorCode = int;
 
-namespace codes
+struct Error
 {
-constexpr ErrorCode SUCCESS = ErrorCode{0};
-constexpr ErrorCode FAILED_OPERATION = ErrorCode{1};
-constexpr ErrorCode ABORTED = ErrorCode{2};
-constexpr ErrorCode BUSY = ErrorCode{3};
-constexpr ErrorCode ENCODING = ErrorCode{4};
-constexpr ErrorCode DECODING = ErrorCode{5};
-}
+	ErrorCode asionetCode{0};
+	boost::system::error_code boostCode{};
 
-class Error : std::runtime_error
-{
-public:
-    Error(const std::string & msg, ErrorCode code)
-        : runtime_error(msg), code(code)
-    {}
+	boost::system::error_code getBoostCode() const noexcept
+	{ return boostCode; }
 
-    ErrorCode getErrorCode() const noexcept
-    { return code; }
+	explicit operator bool() const noexcept
+	{ return asionetCode != 0; }
 
-protected:
-    ErrorCode code;
+	friend bool operator==(const Error & lhs, const Error & rhs) noexcept
+	{ return lhs.asionetCode == rhs.asionetCode; }
+
+	friend bool operator!=(const Error & lhs, const Error & rhs) noexcept
+	{ return !(lhs == rhs); }
 };
 
-class FailedOperation : public Error
-{
-public:
-    FailedOperation()
-        : Error("networking error: failed operation", codes::FAILED_OPERATION)
-    {}
-};
+namespace codes { ErrorCode success{0}; }
+const Error success{codes::success};
 
-class Aborted : public Error
-{
-public:
-    Aborted()
-        : Error("networking error: aborted", codes::ABORTED)
-    {}
-};
+namespace codes { ErrorCode failedOperation{1}; }
+const Error failedOperation{codes::failedOperation};
 
-class Busy : public Error
-{
-public:
-    Busy()
-        : Error("networking error: busy", codes::BUSY)
-    {}
-};
+namespace codes { ErrorCode aborted{2}; }
+const Error aborted{codes::aborted};
 
-class Encoding : public Error
-{
-public:
-    Encoding()
-        : Error("networking error: encoding", codes::ENCODING)
-    {}
-};
+namespace codes { ErrorCode encoding{3}; }
+const Error encoding{codes::encoding};
 
-class Decoding : public Error
-{
-public:
-    Decoding()
-        : Error("networking error: decoding", codes::DECODING)
-    {}
-};
+namespace codes { ErrorCode decoding{4}; }
+const Error decoding{codes::decoding};
 
 }
 }

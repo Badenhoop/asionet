@@ -29,9 +29,9 @@ inline std::uint32_t numDataBytesFromBuffer(boost::asio::streambuf & streambuf)
 
 }
 
-using WriteHandler = std::function<void(const error::ErrorCode & error)>;
+using WriteHandler = std::function<void(const error::Error & error)>;
 
-using ReadHandler = std::function<void(const error::ErrorCode & error, std::string & data)>;
+using ReadHandler = std::function<void(const error::Error & error, std::string & data)>;
 
 template<typename SyncWriteStream>
 void asyncWrite(asionet::Context & context,
@@ -48,15 +48,15 @@ void asyncWrite(asionet::Context & context,
 
     closeable::timedAsyncOperation(
         context, asyncOperation, stream, timeout,
-        [handler, frame = std::move(frame)](const auto & networkingError, const auto & boostError, auto numBytesTransferred)
+        [handler, frame = std::move(frame)](const auto & error, auto numBytesTransferred)
         {
             if (numBytesTransferred < frame->getSize())
             {
-                handler(error::codes::FAILED_OPERATION);
+                handler(error::failedOperation);
                 return;
             }
 
-            handler(networkingError);
+            handler(error);
         },
         stream, buffers);
 }
@@ -79,26 +79,26 @@ void asyncRead(asionet::Context & context,
     closeable::timedAsyncOperation(
         context, asyncOperation, stream, timeout,
         [&context, &stream, &buffer, timeout, handler, startTime]
-            (const auto & networkingError, const auto & boostError, auto numBytesTransferred)
+            (const auto & error, auto numBytesTransferred)
         {
             std::string data{};
 
-            if (networkingError)
+            if (error)
             {
-                handler(networkingError, data);
+                handler(error, data);
                 return;
             }
 
             if (numBytesTransferred != Frame::HEADER_SIZE)
             {
-                handler(error::codes::FAILED_OPERATION, data);
+                handler(error::failedOperation, data);
                 return;
             }
 
             auto numDataBytes = numDataBytesFromBuffer(buffer);
             if (numDataBytes == 0)
             {
-                handler(networkingError, data);
+                handler(error, data);
                 return;
             }
 
@@ -111,24 +111,24 @@ void asyncRead(asionet::Context & context,
             closeable::timedAsyncOperation(
                 context, asyncOperation, stream, newTimeout,
                 [&buffer, handler, numDataBytes]
-                    (const auto & networkingError, const auto & boostError, auto numBytesTransferred)
+                    (const auto & error, auto numBytesTransferred)
                 {
                     std::string data{};
 
-                    if (networkingError)
+                    if (error)
                     {
-                        handler(networkingError, data);
+                        handler(error, data);
                         return;
                     }
 
                     if (numBytesTransferred != numDataBytes)
                     {
-                        handler(error::codes::FAILED_OPERATION, data);
+                        handler(error::failedOperation, data);
                         return;
                     }
 
                     data = utils::stringFromStreambuf(buffer, numDataBytes);
-                    handler(networkingError, data);
+                    handler(error, data);
                 },
                 stream, buffer, boost::asio::transfer_exactly(numDataBytes));
         },

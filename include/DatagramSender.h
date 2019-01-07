@@ -8,7 +8,7 @@
 #include "Stream.h"
 #include "Message.h"
 #include "Utils.h"
-#include "QueuedExecutor.h"
+#include "OperationQueue.h"
 
 namespace asionet
 {
@@ -17,12 +17,12 @@ template<typename Message>
 class DatagramSender
 {
 public:
-	using SendHandler = std::function<void(const error::ErrorCode & error)>;
+	using SendHandler = std::function<void(const error::Error & error)>;
 
 	explicit DatagramSender(asionet::Context & context)
 		: context(context)
 		  , socket(context)
-		  , queuedExecutor(context)
+		  , operationQueue(context)
 	{}
 
 	void asyncSend(const Message & message,
@@ -35,19 +35,19 @@ public:
 		if (!message::internal::encode(message, *data))
 		{
 			context.post(
-				[handler] { handler(error::codes::ENCODING); });
+				[handler] { handler(error::encoding); });
 			return;
 		}
 
 		auto asyncOperation = [this](auto && ... args)
 		{ this->asyncSendOperation(std::forward<decltype(args)>(args)...); };
-		queuedExecutor.execute(asyncOperation, handler, data, ip, port, timeout);
+		operationQueue.execute(asyncOperation, handler, data, ip, port, timeout);
 	}
 
 	void stop()
 	{
 		closeable::Closer<Socket>::close(socket);
-		queuedExecutor.clear();
+		operationQueue.clear();
 	}
 
 private:
@@ -56,7 +56,7 @@ private:
 
 	asionet::Context & context;
 	Socket socket;
-	utils::QueuedExecutor queuedExecutor;
+	utils::OperationQueue operationQueue;
 
 	void asyncSendOperation(const SendHandler & handler,
 	                        std::shared_ptr<std::string> & data,

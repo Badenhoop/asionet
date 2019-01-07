@@ -15,7 +15,7 @@
 #include "Error.h"
 #include "Busyable.h"
 #include "Context.h"
-#include "QueuedExecutor.h"
+#include "OperationQueue.h"
 
 namespace asionet
 {
@@ -27,14 +27,14 @@ public:
 	using RequestMessage = typename Service::RequestMessage;
 	using ResponseMessage = typename Service::ResponseMessage;
 
-	using CallHandler = std::function<void(const error::ErrorCode & error,
+	using CallHandler = std::function<void(const error::Error & error,
 										   const std::shared_ptr<ResponseMessage> & response)>;
 
 	ServiceClient(asionet::Context & context, std::size_t maxMessageSize = 512)
 		: context(context)
 		  , socket(context)
 		  , maxMessageSize(maxMessageSize)
-		  , queuedExecutor(context)
+		  , operationQueue(context)
 	{}
 
 	void asyncCall(const RequestMessage & request,
@@ -50,20 +50,20 @@ public:
 				[handler]
 				{
 					std::shared_ptr<ResponseMessage> noResponse;
-					handler(error::codes::ENCODING, noResponse);
+					handler(error::encoding, noResponse);
 				});
 			return;
 		}
 
 		auto asyncOperation = [this](auto && ... args)
 		{ this->asyncCallOperation(std::forward<decltype(args)>(args)...); };
-		queuedExecutor.execute(asyncOperation, handler, sendData, host, port, timeout);
+		operationQueue.execute(asyncOperation, handler, sendData, host, port, timeout);
 	}
 
 	void stop()
 	{
 		closeable::Closer<Socket>::close(socket);
-		queuedExecutor.clear();
+		operationQueue.clear();
 	}
 
 private:
@@ -97,7 +97,7 @@ private:
 	asionet::Context & context;
 	Socket socket;
 	std::size_t maxMessageSize;
-	utils::QueuedExecutor queuedExecutor;
+	utils::OperationQueue operationQueue;
 
 	void asyncCallOperation(const CallHandler & handler,
 		                    std::shared_ptr<std::string> & sendData,
@@ -127,7 +127,7 @@ private:
 					return;
 				}
 
-				ServiceClient<Service>::updateTimeout(state->timeout, state->startTime);
+				this->updateTimeout(state->timeout, state->startTime);
 
 				auto & sendDataRef = state->sendData;
 				auto & timeoutRef = state->timeout;
@@ -144,7 +144,7 @@ private:
 							return;
 						}
 
-						ServiceClient<Service>::updateTimeout(state->timeout, state->startTime);
+						this->updateTimeout(state->timeout, state->startTime);
 
 						auto & bufferRef = state->buffer;
 						auto & timeoutRef = state->timeout;

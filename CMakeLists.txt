@@ -7,7 +7,7 @@ set(CMAKE_CXX_STANDARD 14)
 find_package(Boost REQUIRED COMPONENTS system regex)
 
 # compiler flags
-set(CMAKE_CXX_FLAGS -pthread)
+set(CMAKE_CXX_FLAGS "-pthread")
 
 ###########################
 # NetworkLib Library Target
@@ -33,7 +33,7 @@ set(SOURCE_FILES
         include/Worker.h
         include/WorkerPool.h
         include/WorkSerializer.h
-        include/QueuedExecutor.h
+        include/OperationQueue.h
         include/Monitor.h
         include/Wait.h
         src/Wait.cpp)
@@ -44,15 +44,16 @@ set(SOURCE_FILES
 ########################
 set(TEST_SOURCE_FILES
         ${SOURCE_FILES}
-        test/Test.h
         test/Test.cpp
-        test/PlatoonMessage.h
-        test/PlatoonService.h
-        test/Main.cpp
+        test/TestMessage.h
+        test/TestService.h
         test/TestUtils.h)
-add_executable(NetworkingLibTest ${TEST_SOURCE_FILES})
+add_executable(asionetTest ${TEST_SOURCE_FILES})
 
-target_link_libraries(NetworkingLibTest ${Boost_LIBRARIES})
+target_link_libraries(asionetTest ${Boost_LIBRARIES})
+
+target_link_libraries(asionetTest gtest gtest_main)
+target_include_directories(asionetTest PUBLIC ${gtest_SOURCE_DIR}/include ${gtest_SOURCE_DIR})
 
 # For debugging
-# target_compile_options(NetworkingLibTest PUBLIC -fopenmp -fPIC -O0 -g3 -ggdb)
+# target_compile_options(asionetTest PUBLIC -fopenmp -fPIC -O0 -g3 -ggdb)

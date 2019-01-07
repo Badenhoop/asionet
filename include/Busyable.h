@@ -43,7 +43,7 @@ public:
 	    auto thisThreadId = std::this_thread::get_id();
 	    if (thisThreadId == busyable.busyThreadId.load() ||
 	        !busyable.busyMutex.try_lock())
-		    throw error::Busy{};
+		    throw std::runtime_error{"busy"};
 
 	    owns = true;
 	    busyable.busy = true;

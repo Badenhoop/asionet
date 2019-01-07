@@ -19,16 +19,16 @@ namespace asionet
 namespace message
 {
 
-using SendHandler = std::function<void(const error::ErrorCode & code)>;
+using SendHandler = std::function<void(const error::Error & code)>;
 
 template<typename Message>
-using ReceiveHandler = std::function<void(const error::ErrorCode & code, std::shared_ptr<Message> & message)>;
+using ReceiveHandler = std::function<void(const error::Error & code, std::shared_ptr<Message> & message)>;
 
-using SendToHandler = std::function<void(const error::ErrorCode & code)>;
+using SendToHandler = std::function<void(const error::Error & code)>;
 
 template<typename Message>
 using ReceiveFromHandler = std::function<
-	void(const error::ErrorCode & code,
+	void(const error::Error & code,
 	     std::shared_ptr<Message> & message,
 	     const std::string & senderHost,
 	     std::uint16_t senderPort)>;
@@ -97,7 +97,7 @@ void asyncSend(asionet::Context & context,
 	if (!internal::encode(message, *data))
 	{
 		context.post(
-			[handler] { handler(error::codes::ENCODING); });
+			[handler] { handler(error::encoding); });
 		return;
 	}
 
@@ -123,7 +123,7 @@ void asyncReceive(asionet::Context & context,
 			std::shared_ptr<Message> message;
 			if (!internal::decode(data, message))
 			{
-				handler(error::codes::DECODING, message);
+				handler(error::decoding, message);
 				return;
 			}
 			handler(errorCode, message);
@@ -143,7 +143,7 @@ void asyncSendDatagram(asionet::Context & context,
 	if (!internal::encode(message, *data))
 	{
 		context.post(
-			[handler] { handler(error::codes::ENCODING); });
+			[handler] { handler(error::encoding); });
 		return;
 	}
 
@@ -164,12 +164,12 @@ void asyncReceiveDatagram(asionet::Context & context,
 {
 	asionet::socket::asyncReceiveFrom(
 		context, socket, buffer, timeout,
-		[handler](auto error, const auto & data, const auto & senderHost, auto senderPort)
+		[handler](const auto & error, const auto & data, const auto & senderHost, auto senderPort)
 		{
 			std::shared_ptr<Message> message;
 			if (!internal::decode(data, message))
 			{
-				handler(error::codes::DECODING, message, senderHost, senderPort);
+				handler(error::decoding, message, senderHost, senderPort);
 				return;
 			}
 			handler(error, message, senderHost, senderPort);

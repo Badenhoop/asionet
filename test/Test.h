@@ -30,44 +30,6 @@ public:
     NonCopyableMessage & operator=(NonCopyableMessage &&) = delete;
 };
 
-void testAsyncServices();
-
-void testTcpClientTimeout();
-
-void testMultipleConnections();
-
-void testStoppingServiceServer();
-
-void testAsyncDatagramReceiver();
-
-void testPeriodicTimer();
-
-void testServiceClientAsyncCallTimeout();
-
-void testDatagramSenderAsyncSend();
-
-void testDatagramSenderQueuedSending();
-
-void testResolver();
-
-void testStringMessageOverDatagram();
-
-void testStringMessageOverService();
-
-void testServiceServerMaxMessageSize();
-
-void testServiceClientMaxMessageSize();
-
-void testDatagramReceiverMaxMessageSize();
-
-void testServiceLargeTransferSize();
-
-void testNonCopyableMessage();
-
-void testWorkerPool();
-
-void testWorkSerializer();
-
 }
 }
 

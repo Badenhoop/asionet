@@ -33,11 +33,11 @@ inline bool stringFromBuffer(std::string & data, std::vector<char> & buffer, std
 
 }
 
-using ConnectHandler = std::function<void(const error::ErrorCode & error)>;
+using ConnectHandler = std::function<void(const error::Error & error)>;
 
-using SendHandler = std::function<void(const error::ErrorCode & error)>;
+using SendHandler = std::function<void(const error::Error & error)>;
 
-using ReceiveHandler = std::function<void(const error::ErrorCode & error,
+using ReceiveHandler = std::function<void(const error::Error & error,
                                           std::string & data,
                                           const std::string & host,
                                           std::uint16_t port)>;
@@ -65,11 +65,11 @@ void asyncConnect(asionet::Context & context,
     closeable::timedAsyncOperation(
         context, resolveOperation, *resolver, timeout,
         [&context, &socket, host, port, timeout, handler, resolver, startTime]
-            (const auto & networkingError, const auto & boostError, auto endpointIterator)
+            (const auto & error, auto endpointIterator)
         {
-            if (networkingError)
+            if (error)
             {
-                handler(networkingError);
+                handler(error);
                 return;
             }
 
@@ -82,9 +82,9 @@ void asyncConnect(asionet::Context & context,
 
             closeable::timedAsyncOperation(
                 context, connectOperation, socket, newTimeout,
-                [handler](const auto & networkingError, const auto & boostError, auto iterator)
+                [handler](const auto & error, auto iterator)
                 {
-                    handler(networkingError);
+                    handler(error);
                 },
                 socket, endpointIterator);
         },
@@ -112,17 +112,15 @@ void asyncSendTo(asionet::Context & context,
 
     closeable::timedAsyncOperation(
         context, asyncOperation, socket, timeout,
-        [handler, frame = std::move(frame)](const auto & networkingError,
-                                              const auto & boostError,
-                                              auto numBytesTransferred)
+        [handler, frame = std::move(frame)](const auto & error, auto numBytesTransferred)
         {
             if (numBytesTransferred < frame->getSize())
             {
-                handler(error::codes::FAILED_OPERATION);
+                handler(error::failedOperation);
                 return;
             }
 
-            handler(networkingError);
+            handler(error);
         },
         buffers, endpoint);
 };
@@ -142,25 +140,25 @@ void asyncReceiveFrom(asionet::Context & context,
 
     closeable::timedAsyncOperation(
         context, asyncOperation, socket, timeout,
-        [&buffer, handler, senderEndpoint](const auto & networkingError, const auto & boostError, auto numBytesTransferred)
+        [&buffer, handler, senderEndpoint](const auto & error, auto numBytesTransferred)
         {
             std::string receiveData{};
             auto senderHost = senderEndpoint->address().to_string();
             auto senderPort = senderEndpoint->port();
 
-            if (networkingError)
+            if (error)
             {
-                handler(networkingError, receiveData, senderHost, senderPort);
+                handler(error, receiveData, senderHost, senderPort);
                 return;
             }
 
             if (!internal::stringFromBuffer(receiveData, buffer, numBytesTransferred))
             {
-                handler(error::codes::FAILED_OPERATION, receiveData, senderHost, senderPort);
+                handler(error::failedOperation, receiveData, senderHost, senderPort);
                 return;
             }
 
-            handler(networkingError, receiveData, senderHost, senderPort);
+            handler(error, receiveData, senderHost, senderPort);
         },
         boost::asio::buffer(buffer),
         *senderEndpoint);

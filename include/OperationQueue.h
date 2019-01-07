@@ -25,10 +25,10 @@ namespace utils
  * QueuedExecutor wraps the handler of an async operation such that whenever a running operation finishes, the next queued
  * operation is automatically posted on the given asionet::Context for execution.
  */
-class QueuedExecutor
+class OperationQueue
 {
 public:
-	explicit QueuedExecutor(asionet::Context & context)
+	explicit OperationQueue(asionet::Context & context)
 		: context(context)
 	{}
 
@@ -42,7 +42,17 @@ public:
 		// If this is the case, the operation will be popped from the queue and posted to the context for later execution.
 		auto wrappedHandler = [this, handler](auto && ... handlerArgs)
 		{
-			handler(std::forward<decltype(handlerArgs)>(handlerArgs)...);
+			// Catch potential exception for later rethrowing.
+			std::exception_ptr eptr;
+			try
+			{
+				handler(std::forward<decltype(handlerArgs)>(handlerArgs)...);
+			}
+			catch (...)
+			{
+				eptr = std::current_exception();
+			}
+
 			operationQueue(
 				[&](auto & queue)
 				{
@@ -56,6 +66,9 @@ public:
 					queue.pop();
 					context.post(nextOperation);
 				});
+
+			if (eptr)
+				std::rethrow_exception(eptr);
 		};
 
 		// If queue is empty, we can call the wrapped handler directly.

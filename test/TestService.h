@@ -5,15 +5,15 @@
 #ifndef PROTOCOL_NETWORKSERVICES_H
 #define PROTOCOL_NETWORKSERVICES_H
 
-#include "PlatoonMessage.h"
+#include "TestMessage.h"
 
 namespace protocol
 {
-class PlatoonService
+class TestService
 {
 public:
-    using RequestMessage = PlatoonMessage;
-    using ResponseMessage = PlatoonMessage;
+    using RequestMessage = TestMessage;
+    using ResponseMessage = TestMessage;
 };
 }
 

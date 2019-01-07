@@ -86,7 +86,7 @@ void timedAsyncOperation(asionet::Context & context,
 	auto timer = std::make_shared<Timer>(context);
 	timer->startTimeout(
 		timeout,
-		(*serializer)([&, timer]
+		(*serializer)([&, timer, serializer]
 		              {
 			              Closer<Closeable>::close(closeable);
 		              }));
@@ -94,17 +94,17 @@ void timedAsyncOperation(asionet::Context & context,
 	asyncOperation(
 		std::forward<AsyncOperationArgs>(asyncOperationArgs)...,
 		(*serializer)(
-			[&, timer, serializer, handler](const boost::system::error_code & opError, auto && ... remainingHandlerArgs)
+			[&, timer, serializer, handler](const boost::system::error_code & boostCode, auto && ... remainingHandlerArgs)
 			{
 				timer->stop();
 
-				auto errorCode = error::codes::SUCCESS;
+				auto error = error::success;
 				if (!IsOpen<Closeable>{}(closeable))
-					errorCode = error::codes::ABORTED;
-				else if (opError)
-					errorCode = error::codes::FAILED_OPERATION;
+					error = error::aborted;
+				else if (boostCode)
+					error = error::Error{error::codes::failedOperation, boostCode};
 
-				handler(errorCode, opError, std::forward<decltype(remainingHandlerArgs)>(remainingHandlerArgs)...);
+				handler(error, std::forward<decltype(remainingHandlerArgs)>(remainingHandlerArgs)...);
 			}));
 }
 

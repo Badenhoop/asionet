@@ -18,7 +18,7 @@ class DatagramReceiver
 {
 public:
     using ReceiveHandler = std::function<
-        void(const error::ErrorCode & error,
+        void(const error::Error & error,
              const std::shared_ptr<Message> & message,
              const std::string & host,
              std::uint16_t port)>;
