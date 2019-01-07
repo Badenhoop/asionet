@@ -19,124 +19,162 @@ template<typename Service>
 class ServiceServer
 {
 public:
-    using RequestMessage = typename Service::RequestMessage;
-    using ResponseMessage = typename Service::ResponseMessage;
+	using RequestMessage = typename Service::RequestMessage;
+	using ResponseMessage = typename Service::ResponseMessage;
 
-    using Endpoint = Resolver::Endpoint;
-    using RequestReceivedHandler = std::function<void(const Endpoint & clientEndpoint,
-                                                      const std::shared_ptr<RequestMessage> & requestMessage,
-                                                      ResponseMessage & response)>;
-    ServiceServer(asionet::Context & context,
-                  uint16_t bindingPort,
-                  std::size_t maxMessageSize = 512)
-        : context(context)
-          , bindingPort(bindingPort)
-          , acceptor(context)
-          , maxMessageSize(maxMessageSize)
-    {}
+	using Endpoint = Resolver::Endpoint;
+	using RequestReceivedHandler = std::function<void(const Endpoint & clientEndpoint,
+	                                                  const std::shared_ptr<RequestMessage> & requestMessage,
+	                                                  ResponseMessage & response)>;
 
-    void advertiseService(const RequestReceivedHandler & requestReceivedHandler)
-    {
-        running = true;
-        accept(requestReceivedHandler);
-    }
+	ServiceServer(asionet::Context & context,
+	              uint16_t bindingPort,
+	              std::size_t maxMessageSize = 512)
+		: context(context)
+		  , bindingPort(bindingPort)
+		  , acceptor(context)
+		  , maxMessageSize(maxMessageSize)
+		  , overrideOperation(context, [this] { this->stopOperation(); })
+	{}
 
-    void stop()
-    {
-        running = false;
-        closeable::Closer<Acceptor>::close(acceptor);
-    }
+	void advertiseService(RequestReceivedHandler requestReceivedHandler,
+	                      time::Duration receiveTimeout = std::chrono::seconds(60),
+	                      time::Duration sendTimeout = std::chrono::seconds(10))
+	{
+		auto asyncOperation = [this](auto && ... args)
+		{
+			this->advertiseServiceOperation(std::forward<decltype(args)>(args)...);
+		};
+		overrideOperation.dispatch(asyncOperation, requestReceivedHandler, receiveTimeout, sendTimeout);
+	}
+
+	void stop()
+	{
+		stopOperation();
+		overrideOperation.cancelPendingOperation();
+	}
 
 private:
-    using Tcp = boost::asio::ip::tcp;
-    using Socket = Tcp::socket;
-    using Acceptor = Tcp::acceptor;
-    using Frame = asionet::internal::Frame;
+	using Tcp = boost::asio::ip::tcp;
+	using Socket = Tcp::socket;
+	using Acceptor = Tcp::acceptor;
+	using Frame = asionet::internal::Frame;
 
-    struct HandleRequestState
-    {
-        using Ptr = std::shared_ptr<HandleRequestState>;
+	struct AcceptState
+	{
+		AcceptState(ServiceServer<Service> & server,
+		            RequestReceivedHandler && requestReceivedHandler,
+		            time::Duration && receiveTimeout,
+		            time::Duration && sendTimeout)
+			: requestReceivedHandler(std::move(requestReceivedHandler))
+			  , receiveTimeout(std::move(receiveTimeout))
+			  , sendTimeout(std::move(sendTimeout))
+			  , finishedNotifier(server.overrideOperation)
+		{}
 
-        HandleRequestState(ServiceServer<Service> & server,
-                           const RequestReceivedHandler & requestReceivedHandler,
-                           const time::Duration & receiveTimeout,
-                           const time::Duration & sendTimeout)
-            : socket(server.context)
-              , requestReceivedHandler(requestReceivedHandler)
-              , buffer(server.maxMessageSize + internal::Frame::HEADER_SIZE)
-              , receiveTimeout(receiveTimeout)
-              , sendTimeout(sendTimeout)
-        {}
+		RequestReceivedHandler requestReceivedHandler;
+		time::Duration receiveTimeout;
+		time::Duration sendTimeout;
+		utils::OverrideOperation::FinishedOperationNotifier finishedNotifier;
+	};
 
-        Socket socket;
-        RequestReceivedHandler requestReceivedHandler;
-        boost::asio::streambuf buffer;
-        time::Duration receiveTimeout;
-        time::Duration sendTimeout;
-    };
+	struct ServiceState
+	{
+		using Ptr = std::shared_ptr<ServiceState>;
 
-    asionet::Context & context;
-    std::uint16_t bindingPort;
-    Acceptor acceptor;
-    std::size_t maxMessageSize;
-    std::atomic<bool> running{false};
+		ServiceState(ServiceServer<Service> & server, const AcceptState & acceptState)
+			: socket(server.context)
+			  , buffer(server.maxMessageSize + internal::Frame::HEADER_SIZE)
+			  , requestReceivedHandler(acceptState.requestReceivedHandler)
+			  , receiveTimeout(acceptState.receiveTimeout)
+			  , sendTimeout(acceptState.sendTimeout)
+		{}
 
-    void accept(const RequestReceivedHandler & requestReceivedHandler,
-                const time::Duration & receiveTimeout = std::chrono::seconds(60),
-                const time::Duration & sendTimeout = std::chrono::seconds(10))
-    {
-        if (!acceptor.is_open())
-            acceptor = Acceptor(context, Tcp::endpoint{Tcp::v4(), bindingPort});
+		Socket socket;
+		boost::asio::streambuf buffer;
+		RequestReceivedHandler requestReceivedHandler;
+		time::Duration receiveTimeout;
+		time::Duration sendTimeout;
+	};
 
-        auto state = std::make_shared<HandleRequestState>(*this, requestReceivedHandler, receiveTimeout, sendTimeout);
+	asionet::Context & context;
+	std::uint16_t bindingPort;
+	Acceptor acceptor;
+	std::size_t maxMessageSize;
+	std::atomic<bool> running{false};
+	utils::OverrideOperation overrideOperation;
 
-        // keep reference due to std::move()
-        auto & socketRef = state->socket;
+	void advertiseServiceOperation(RequestReceivedHandler & requestReceivedHandler,
+	                               time::Duration & receiveTimeout,
+	                               time::Duration & sendTimeout)
+	{
+		running = true;
+		auto acceptState = std::make_shared<AcceptState>(
+			*this, std::move(requestReceivedHandler), std::move(receiveTimeout), std::move(sendTimeout));
+		accept(acceptState);
+	}
 
-        acceptor.async_accept(
-            socketRef,
-            [this, requestReceivedHandler, state = std::move(state)](const auto & acceptError)
-            {
-                if (!running)
-                    return;
+	void accept(std::shared_ptr<AcceptState> & acceptState)
+	{
+		if (!acceptor.is_open())
+			acceptor = Acceptor{context, Tcp::endpoint{Tcp::v4(), bindingPort}};
 
-                if (!acceptError)
-                {
-                    auto & socketRef = state->socket;
-                    auto & bufferRef = state->buffer;
-                    auto & receiveTimeoutRef = state->receiveTimeout;
+		auto serviceState = std::make_shared<ServiceState>(*this, *acceptState);
 
-                    asionet::message::asyncReceive<RequestMessage>(
-                        context, socketRef, bufferRef, receiveTimeoutRef,
-                        [this, state = std::move(state)](const auto & errorCode, const auto & request)
-                        {
-                            // If a receive has timed out we treat it like we've never
-                            // received any message (and therefor we do not call the handler).
-                            if (errorCode)
-                                return;
+		// keep reference due to std::move()
+		auto & socketRef = serviceState->socket;
 
-                            Endpoint clientEndpoint{state->socket.remote_endpoint().address().to_string(),
-                                                    state->socket.remote_endpoint().port()};
-                            ResponseMessage response;
-                            state->requestReceivedHandler(clientEndpoint, request, response);
+		acceptor.async_accept(
+			socketRef,
+			[this, acceptState = std::move(acceptState), serviceState = std::move(serviceState)]
+				(const auto & acceptError) mutable
+			{
+				if (!running)
+					return;
 
-                            auto & socketRef = state->socket;
-                            auto & sendTimeoutRef = state->sendTimeout;
+				if (!acceptError)
+				{
+					auto & socketRef = serviceState->socket;
+					auto & bufferRef = serviceState->buffer;
+					auto & receiveTimeoutRef = serviceState->receiveTimeout;
 
-                            asionet::message::asyncSend(
-                                context, socketRef, response, sendTimeoutRef,
-                                [this, state = std::move(state)](const auto & errorCode)
-                                {
-                                    // We cannot be sure that the message is going to be received at the other side anyway,
-                                    // so we don't handle anything sending-wise.
-                                });
-                        });
-                }
+					asionet::message::asyncReceive<RequestMessage>(
+						context, socketRef, bufferRef, receiveTimeoutRef,
+						[this, serviceState = std::move(serviceState)](const auto & errorCode, const auto & request)
+						{
+							// If a receive has timed out we treat it like we've never
+							// received any message (and therefor we do not call the handler).
+							if (errorCode)
+								return;
 
-                // The next accept event will be put on the event queue.
-                this->accept(requestReceivedHandler, state->receiveTimeout, state->sendTimeout);
-            });
-    }
+							Endpoint clientEndpoint{serviceState->socket.remote_endpoint().address().to_string(),
+							                        serviceState->socket.remote_endpoint().port()};
+							ResponseMessage response;
+							serviceState->requestReceivedHandler(clientEndpoint, request, response);
+
+							auto & socketRef = serviceState->socket;
+							auto & sendTimeoutRef = serviceState->sendTimeout;
+
+							asionet::message::asyncSend(
+								context, socketRef, response, sendTimeoutRef,
+								[this, serviceState = std::move(serviceState)](const auto & errorCode)
+								{
+									// We cannot be sure that the message is going to be received at the other side anyway,
+									// so we don't handle anything sending-wise.
+								});
+						});
+				}
+
+				// The next accept event will be put on the event queue.
+				this->accept(acceptState);
+			});
+	}
+
+	void stopOperation()
+	{
+		running = false;
+		closeable::Closer<Acceptor>::close(acceptor);
+	}
 };
 
 }
