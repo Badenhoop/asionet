@@ -26,10 +26,10 @@ public:
 	{}
 
 	void asyncSend(const Message & message,
-	               const std::string & ip,
+	               std::string ip,
 	               std::uint16_t port,
-	               const time::Duration & timeout,
-	               const SendHandler & handler = [](auto && ...) {})
+	               time::Duration timeout,
+	               SendHandler handler = [](auto && ...) {})
 	{
 		auto data = std::make_shared<std::string>();
 		if (!message::internal::encode(message, *data))
@@ -41,13 +41,13 @@ public:
 
 		auto asyncOperation = [this](auto && ... args)
 		{ this->asyncSendOperation(std::forward<decltype(args)>(args)...); };
-		operationQueue.execute(asyncOperation, handler, data, ip, port, timeout);
+		operationQueue.dispatch(asyncOperation, data, ip, port, timeout, handler);
 	}
 
 	void stop()
 	{
 		closeable::Closer<Socket>::close(socket);
-		operationQueue.clear();
+		operationQueue.stop();
 	}
 
 private:
@@ -58,20 +58,38 @@ private:
 	Socket socket;
 	utils::OperationQueue operationQueue;
 
-	void asyncSendOperation(const SendHandler & handler,
-	                        std::shared_ptr<std::string> & data,
-	                        const std::string & ip,
-	                        std::uint16_t port,
-	                        const time::Duration & timeout)
+	struct AsyncState
+	{
+		AsyncState(DatagramSender<Message> & sender,
+		           std::shared_ptr<std::string> && data,
+		           SendHandler && handler)
+			: data(std::move(data))
+			  , handler(std::move(handler))
+			  , notifier(sender.operationQueue)
+		{}
+
+		std::shared_ptr<std::string> data;
+		SendHandler handler;
+		utils::OperationQueue::FinishedOperationNotifier notifier;
+	};
+
+	void asyncSendOperation(std::shared_ptr<std::string> & data,
+	                        std::string & ip,
+	                        std::uint16_t & port,
+	                        time::Duration & timeout,
+	                        SendHandler & handler)
 	{
 		setupSocket();
 
 		// keep reference because of std::move()
 		auto & dataRef = *data;
 
+		auto state = std::make_shared<AsyncState>(*this, std::move(data), std::move(handler));
+
 		asionet::socket::asyncSendTo(
 			context, socket, dataRef, ip, port, timeout,
-			[handler, data = std::move(data)](const auto & error) { handler(error); });
+			[this, state = std::move(state)](const auto & error)
+			{ state->handler(error); });
 	}
 
 	void setupSocket()

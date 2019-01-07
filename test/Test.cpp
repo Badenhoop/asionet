@@ -27,12 +27,16 @@ namespace test
 {
 
 template<typename Test>
-void runTest1(std::size_t numWorkers = 1)
+void runTest1(std::size_t numWorkers = 1, std::size_t iterations = 1, asionet::time::Duration pause = 0s)
 {
-    asionet::Context context;
-    WorkerPool workers{context, numWorkers};
-    auto test = std::make_shared<Test>(context);
-    test->run();
+	for (std::size_t i = 0; i < iterations; ++i)
+	{
+		asionet::Context context;
+		WorkerPool workers{context, numWorkers};
+		auto test = std::make_shared<Test>(context);
+		test->run();
+		std::this_thread::sleep_for(pause);
+	}
 }
 
 template<typename Test>
@@ -212,6 +216,7 @@ struct StoppingServer : std::enable_shared_from_this<StoppingServer>
         waitable.setWaiting();
 
         server.stop();
+	    std::this_thread::sleep_for(10ms);  // give os some time to release the port
         server.advertiseService(handler);
 
         client.asyncCall(TestMessage::request(43), "127.0.0.1", 10001, 1s, callHandler);
@@ -250,7 +255,7 @@ struct BasicDatagram : std::enable_shared_from_this<BasicDatagram>
                          EXPECT_FALSE(error);
                          EXPECT_EQ(message->getId(), 42);
                      }));
-        sender.asyncSend(TestMessage::request(42), "127.0.0.1", 10000, 1s, [](const auto & error) { EXPECT_FALSE(error); });
+        sender.asyncSend(TestMessage::request(42), "127.0.0.1", 10000, 1s, [self](const auto & error) { EXPECT_FALSE(error); });
         waiter.await(waitable);
     }
 };

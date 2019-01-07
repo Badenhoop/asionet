@@ -38,10 +38,10 @@ public:
 	{}
 
 	void asyncCall(const RequestMessage & request,
-	               const std::string & host,
+	               std::string host,
 	               std::uint16_t port,
-	               const time::Duration & timeout,
-	               const CallHandler & handler)
+	               time::Duration timeout,
+	               CallHandler handler)
 	{
 		auto sendData = std::make_shared<std::string>();
 		if (!message::internal::encode(request, *sendData))
@@ -57,13 +57,13 @@ public:
 
 		auto asyncOperation = [this](auto && ... args)
 		{ this->asyncCallOperation(std::forward<decltype(args)>(args)...); };
-		operationQueue.execute(asyncOperation, handler, sendData, host, port, timeout);
+		operationQueue.dispatch(asyncOperation, sendData, host, port, timeout, handler);
 	}
 
 	void stop()
 	{
 		closeable::Closer<Socket>::close(socket);
-		operationQueue.clear();
+		operationQueue.stop();
 	}
 
 private:
@@ -74,16 +74,17 @@ private:
 	struct AsyncState
 	{
 		AsyncState(ServiceClient<Service> & client,
-			       const CallHandler & handler,
-		           std::shared_ptr<std::string> & sendData,
-		           time::Duration timeout,
-		           time::TimePoint startTime)
-			: handler(handler)
+			       CallHandler && handler,
+		           std::shared_ptr<std::string> && sendData,
+		           time::Duration && timeout,
+		           time::TimePoint && startTime)
+			: handler(std::move(handler))
 			  , sendData(std::move(sendData))
-			  , timeout(timeout)
-			  , startTime(startTime)
+			  , timeout(std::move(timeout))
+			  , startTime(std::move(startTime))
 			  , buffer(client.maxMessageSize + Frame::HEADER_SIZE)
 			  , closer(client.socket)
+			  , notifier(client.operationQueue)
 		{}
 
 		CallHandler handler;
@@ -92,6 +93,7 @@ private:
 		time::TimePoint startTime;
 		boost::asio::streambuf buffer;
 		closeable::Closer<Socket> closer;
+		utils::OperationQueue::FinishedOperationNotifier notifier;
 	};
 
 	asionet::Context & context;
@@ -99,16 +101,16 @@ private:
 	std::size_t maxMessageSize;
 	utils::OperationQueue operationQueue;
 
-	void asyncCallOperation(const CallHandler & handler,
-		                    std::shared_ptr<std::string> & sendData,
-		                    const std::string & host,
-		                    std::uint16_t port,
-		                    const time::Duration & timeout)
+	void asyncCallOperation(std::shared_ptr<std::string> & sendData,
+		                    std::string & host,
+		                    std::uint16_t & port,
+		                    time::Duration & timeout,
+		                    CallHandler & handler)
 	{
 		// Container for our variables which are needed for the subsequent asynchronous calls to connect, receive and send.
 		// When 'state' goes out of scope, it does cleanup.
 		auto state = std::make_shared<AsyncState>(
-			*this, handler, sendData, timeout, time::now());
+			*this, std::move(handler), std::move(sendData), std::move(timeout), std::move(time::now()));
 
 		newSocket();
 

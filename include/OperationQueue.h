@@ -9,7 +9,6 @@
 #include <queue>
 #include "Context.h"
 #include "Utils.h"
-#include "Monitor.h"
 
 namespace asionet
 {
@@ -32,81 +31,84 @@ public:
 		: context(context)
 	{}
 
-	template<typename AsyncOperation, typename Handler, typename ... AsyncOperationArgs>
-	void execute(const AsyncOperation & asyncOperation,
-	             const Handler & handler,
-	             AsyncOperationArgs && ... asyncOperationArgs)
+	template<typename AsyncOperation, typename ... AsyncOperationArgs>
+	void dispatch(const AsyncOperation & asyncOperation, AsyncOperationArgs && ... asyncOperationArgs)
 	{
-		// Wrap the handler inside another handler.
-		// This wrapped handler executes the passed handler and checks whether there exist any further operations which are waiting inside the queue.
-		// If this is the case, the operation will be popped from the queue and posted to the context for later execution.
-		auto wrappedHandler = [this, handler](auto && ... handlerArgs)
-		{
-			// Catch potential exception for later rethrowing.
-			std::exception_ptr eptr;
-			try
-			{
-				handler(std::forward<decltype(handlerArgs)>(handlerArgs)...);
-			}
-			catch (...)
-			{
-				eptr = std::current_exception();
-			}
-
-			operationQueue(
-				[&](auto & queue)
-				{
-					if (queue.empty())
-					{
-						executing = false;
-						return;
-					}
-
-					auto nextOperation = queue.front();
-					queue.pop();
-					context.post(nextOperation);
-				});
-
-			if (eptr)
-				std::rethrow_exception(eptr);
-		};
+		std::lock_guard<std::mutex> lock{mutex};
 
 		// If queue is empty, we can call the wrapped handler directly.
 		// Else we create an operation handler which executes the passed async operation along with its arguments.
 		// This operation is pushed to the queue for later invocation.
-		operationQueue(
-			[&](auto & queue)
-			{
-				if (!executing)
-				{
-					executing = true;
-					asyncOperation(wrappedHandler, std::forward<AsyncOperationArgs>(asyncOperationArgs)...);
-					return;
-				}
+		if (!executing)
+		{
+			executing = true;
+			asyncOperation(std::forward<decltype(asyncOperationArgs)>(asyncOperationArgs)...);
+			return;
+		}
 
-				queue.push(
-					[asyncOperation, wrappedHandler, asyncOperationArgs...] () mutable
-					{
-						asyncOperation(wrappedHandler, asyncOperationArgs...);
-					}
-				);
-			});
+		operationQueue.push(
+			[asyncOperation, asyncOperationArgs...] () mutable
+			{
+				asyncOperation(asyncOperationArgs...);
+			}
+		);
 	}
 
-	void clear()
+	void notifyFinishedOperation()
 	{
-		operationQueue(
-			[&](auto & queue)
-			{
-				queue = std::queue<std::function<void()>>{};
-				executing = false;
-			});
+		std::lock_guard<std::mutex> lock{mutex};
+		if (operationQueue.empty())
+		{
+			executing = false;
+			return;
+		}
+
+		context.post(operationQueue.front());
+		operationQueue.pop();
 	}
+
+	void stop()
+	{
+		std::lock_guard<std::mutex> lock{mutex};
+		operationQueue = std::queue<std::function<void()>>{};
+		executing = false;
+	}
+
+	class FinishedOperationNotifier
+	{
+	public:
+		explicit FinishedOperationNotifier(OperationQueue & queue)
+			: queue(queue)
+		{}
+
+		~FinishedOperationNotifier()
+		{
+			if (enabled)
+				queue.notifyFinishedOperation();
+		}
+
+		FinishedOperationNotifier(FinishedOperationNotifier && other) noexcept
+			: queue(other.queue), enabled(true)
+		{
+			other.enabled = false;
+		}
+
+		FinishedOperationNotifier(const FinishedOperationNotifier &) = delete;
+
+		FinishedOperationNotifier & operator=(const FinishedOperationNotifier &) = delete;
+
+		FinishedOperationNotifier & operator=(FinishedOperationNotifier && other) noexcept = delete;
+
+	private:
+		OperationQueue & queue;
+		std::atomic<bool> enabled{true};
+	};
 
 private:
 	asionet::Context & context;
-	utils::Monitor<std::queue<std::function<void()>>> operationQueue;
-	std::atomic<bool> executing{false};
+	std::mutex mutex;
+	std::queue<std::function<void()>> operationQueue;
+	bool executing{false};
 };
 
 }

@@ -1,6 +1,7 @@
 ## TODO
 
 ### implementation
+- std::move() handlers into async state
 - repalcement for Busylock: stop(); waitUntilReady; runOperation()
     - for Timer (!!!), DatagramReceiver, ServiceServer
     

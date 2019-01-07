@@ -36,6 +36,7 @@ set(SOURCE_FILES
         include/OperationQueue.h
         include/Monitor.h
         include/Wait.h
+        include/OverrideOperation.h
         src/Wait.cpp)
 
 ########################

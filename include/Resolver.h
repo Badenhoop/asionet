@@ -88,13 +88,13 @@ public:
     {
         auto asyncOperation = [this](auto && ... args)
         { this->asyncResolveOperation(std::forward<decltype(args)>(args)...); };
-        operationQueue.execute(asyncOperation, handler, host, service, timeout);
+	    operationQueue.dispatch(asyncOperation, host, service, timeout, handler);
     }
 
     void stop()
     {
         closeable::Closer<UnderlyingResolver>::close(resolver);
-        operationQueue.clear();
+	    operationQueue.stop();
     }
 
 private:
@@ -105,14 +105,28 @@ private:
     UnderlyingResolver resolver;
     utils::OperationQueue operationQueue;
 
-    void asyncResolveOperation(const ResolveHandler & handler,
-                               const std::string & host,
+    struct AsyncState
+    {
+        AsyncState(Resolver & resolver,
+                   const ResolveHandler & handler)
+            : handler(handler)
+              , notifier(resolver.operationQueue)
+        {}
+
+        ResolveHandler handler;
+        utils::OperationQueue::FinishedOperationNotifier notifier;
+    };
+
+    void asyncResolveOperation(const std::string & host,
                                const std::string & service,
-                               const time::Duration & timeout)
+                               const time::Duration & timeout,
+                               const ResolveHandler & handler)
     {
         resolver.open();
 
         UnderlyingResolver::Query query{host, service};
+
+        auto state = std::make_shared<AsyncState>(*this, handler);
 
         auto resolveOperation = [this](auto && ... args)
         { resolver.async_resolve(std::forward<decltype(args)>(args)...); };
@@ -122,9 +136,9 @@ private:
             resolveOperation,
             resolver,
             timeout,
-            [this, handler](const auto & error, auto endpointIterator)
+            [this, state = std::move(state)](const auto & error, auto endpointIterator)
             {
-                handler(error, this->endpointsFromIterator(endpointIterator));
+                state->handler(error, this->endpointsFromIterator(endpointIterator));
             },
             query);
     }
