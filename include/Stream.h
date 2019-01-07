@@ -91,7 +91,7 @@ void asyncRead(asionet::Context & context,
 
             if (numBytesTransferred != Frame::HEADER_SIZE)
             {
-                handler(error::failedOperation, data);
+                handler(error::invalidFrame, data);
                 return;
             }
 
@@ -123,7 +123,7 @@ void asyncRead(asionet::Context & context,
 
                     if (numBytesTransferred != numDataBytes)
                     {
-                        handler(error::failedOperation, data);
+                        handler(error::invalidFrame, data);
                         return;
                     }
 

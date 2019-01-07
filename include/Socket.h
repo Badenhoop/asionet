@@ -154,7 +154,7 @@ void asyncReceiveFrom(asionet::Context & context,
 
             if (!internal::stringFromBuffer(receiveData, buffer, numBytesTransferred))
             {
-                handler(error::failedOperation, receiveData, senderHost, senderPort);
+                handler(error::invalidFrame, receiveData, senderHost, senderPort);
                 return;
             }
 

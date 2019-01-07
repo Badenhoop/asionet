@@ -124,8 +124,8 @@ struct ClientTimeout : std::enable_shared_from_this<ClientTimeout>
                                       auto nowTime = asionet::time::now();
                                       auto timeSpend = nowTime - startTime;
                                       auto delta = std::abs(timeSpend - timeout);
-                                      EXPECT_EQ(error, error::aborted);
-                                      EXPECT_LE(delta, 1ms);
+	                                  EXPECT_EQ(error, error::aborted);
+                                      EXPECT_LE(delta, 2ms);
                                   }));
         waiter.await(waitable);
     }
@@ -292,7 +292,7 @@ struct PeriodicTimeout : std::enable_shared_from_this<PeriodicTimeout>
                 auto periodTime = time::now() - startTime;
                 startTime = time::now();
                 auto delta = std::abs(periodTime - period);
-                EXPECT_LE(delta, 1ms);
+	            EXPECT_LE(delta, 2ms);
                 run++;
             });
         waiter.await(waitable);
@@ -374,10 +374,7 @@ struct Resolving : std::enable_shared_from_this<Resolving>
 		Waitable waitable{waiter};
 		resolver.asyncResolve(
 			"google.de", "http", 5s,
-			waitable([self](const auto & error, const auto & endpoints)
-			         {
-				         EXPECT_FALSE(error);
-			         }));
+			waitable([self](const auto & error, const auto & endpoints) { EXPECT_FALSE(error); }));
 		waiter.await(waitable);
 	}
 };
@@ -409,7 +406,7 @@ struct StringDatagram : std::enable_shared_from_this<StringDatagram>
 				             EXPECT_FALSE(error);
 				             EXPECT_EQ(*message, "Hello World!");
 			             }));
-		sender.asyncSend("Hello World!", "127.0.0.1", 10000, 1s);
+		sender.asyncSend("Hello World!", "127.0.0.1", 10000, 1s, [self] (const auto & error) { EXPECT_FALSE(error); });
 		waiter.await(waitable);
 	}
 };
@@ -464,7 +461,7 @@ struct MaxMessageSizeServer : std::enable_shared_from_this<MaxMessageSizeServer>
 
 	MaxMessageSizeServer(Context & context)
 		: server(context, 10000, 100)
-		  , client(context)
+		  , client(context, 200)
 		  , waiter(context)
 	{}
 
@@ -492,110 +489,113 @@ TEST(asionetTest, MaxMessageSizeServer)
 	runTest1<MaxMessageSizeServer>();
 }
 
-void testServiceClientMaxMessageSize()
+struct MaxMessageSizeClient : std::enable_shared_from_this<MaxMessageSizeClient>
 {
-    Context context;
-    Worker worker{context};
+	ServiceServer<StringService> server;
+	ServiceClient<StringService> client;
+	Waiter waiter;
 
-    ServiceServer<StringService> server{context, 10000, 200};
-    server.advertiseService(
-        [&](const auto & endpoint, const auto & request, auto & response)
-        {
-            response = std::string(200, 'a');
-        });
+	MaxMessageSizeClient(Context & context)
+		: server(context, 10000, 200)
+		  , client(context, 100)
+		  , waiter(context)
+	{}
 
-    sleep(1);
+	void run()
+	{
+		auto self = shared_from_this();
+		server.advertiseService(
+			[&, self](const auto & endpoint, const auto & request, auto & response)
+			{
+				response = std::string(200, 'a');
+			});
+		Waitable waitable{waiter};
+		client.asyncCall(
+			std::string(100, 'a'), "127.0.0.1", 10000, 1s,
+			waitable([&, self](const auto & error, const auto & message)
+			         {
+				         EXPECT_EQ(error, error::invalidFrame);
+			         }));
+		waiter.await(waitable);
+	}
+};
 
-    ServiceClient<StringService> client{context, 100};
-    Waiter waiter{context};
-    Waitable waitable{waiter};
-
-    client.asyncCall(
-        std::string(100, 'a'), "127.0.0.1", 10000, 1s,
-        waitable([&](const auto & error, const auto & message)
-        {
-            if (error == error::failedOperation)
-                std::cout << "SUCCESS!\n";
-        }));
-
-    waiter.await(waitable);
+TEST(asionetTest, MaxMessageSizeClient)
+{
+	runTest1<MaxMessageSizeClient>();
 }
 
-void testDatagramReceiverMaxMessageSize()
+struct MaxMessageSizeDatagramReceiver : std::enable_shared_from_this<MaxMessageSizeDatagramReceiver>
 {
-	Context context;
-	Worker worker{context};
+	DatagramReceiver<std::string> receiver;
+	DatagramSender<std::string> sender;
+	Waiter waiter;
 
-	DatagramReceiver<std::string> receiver{context, 10000, 100};
-	DatagramSender<std::string> sender{context};
+	MaxMessageSizeDatagramReceiver(asionet::Context & context)
+		: receiver(context, 10000, 100)
+		  , sender(context)
+		  , waiter(context)
+	{}
 
-	Waiter waiter{context};
-	Waitable waitable{waiter};
+	void run()
+	{
+		auto self = shared_from_this();
+		Waitable waitable{waiter};
+		receiver.asyncReceive(1s, waitable([&, self](const auto & error, auto && ... args)
+		                                   { EXPECT_EQ(error, error::invalidFrame); }));
+		sender.asyncSend(std::string(200, 'a'), "127.0.0.1", 10000, 1s,
+		                 [self] (const auto & error) { EXPECT_FALSE(error); });
+		waiter.await(waitable);
+	}
+};
 
-	receiver.asyncReceive(
-		1s,
-		waitable([&](const auto & error, auto && ... args)
-		{
-			if (error == error::failedOperation)
-				std::cout << "SUCCESS!\n";
-			else
-				std::cout << "FAILED! (This should not be called!\n";
-		}));
-
-	sender.asyncSend(std::string(200, 'a'), "127.0.0.1", 10000, 1s);
-
-	waiter.await(waitable);
+TEST(asionetTest, MaxMessageSizeDatagramReceiver)
+{
+	runTest1<MaxMessageSizeDatagramReceiver>();
 }
 
-void testServiceLargeTransferSize()
+struct LargeTransferSize : std::enable_shared_from_this<LargeTransferSize>
 {
-    Context context;
-    Worker worker{context};
+	ServiceServer<StringService> server;
+	ServiceClient<StringService> client;
+	Waiter waiter;
+	static constexpr std::size_t transferSize = 0x10000;
 
-    std::size_t transferSize = 0x10000;
-    std::string data(transferSize, 'a');
-    std::atomic<bool> success{true};
-    ServiceServer<StringService> server{context, 10000, transferSize};
-    ServiceClient<StringService> client{context, transferSize};
+	LargeTransferSize(Context & context)
+		: server(context, 10000, transferSize)
+		  , client(context, transferSize)
+		  , waiter(context)
+	{}
 
-    server.advertiseService(
-        [&](const auto & endpoint, const auto & request, auto & response)
-        {
-            if (*request != data)
-                success = false;
-            response = data;
-        });
+	void run()
+	{
+		auto self = shared_from_this();
+		std::string data(transferSize, 'a');
+		server.advertiseService(
+			[&, self](const auto & endpoint, const auto & request, auto & response)
+			{
+				EXPECT_EQ(*request, data);
+				response = data;
+			});
+		Waitable waitable{waiter};
+		client.asyncCall(
+			data, "127.0.0.1", 10000, 10s,
+			waitable([&, self](const auto & error, const auto & response)
+			         {
+				         EXPECT_FALSE(error);
+				         EXPECT_EQ(*response, data);
+			         }));
+		waiter.await(waitable);
+	}
+};
 
-    sleep(1);
-    Waiter waiter{context};
-    Waitable waitable{waiter};
-
-    client.asyncCall(
-        data, "127.0.0.1", 10000, 10s,
-        waitable([&](const auto & error, const auto & message)
-        {
-            if (error || *message != data)
-                success = false;
-        }));
-
-    waiter.await(waitable);
-    std::cout << (success ? "SUCCESS!\n" : "FAILED!\n");
+TEST(asionetTest, LargeTransferSize)
+{
+	runTest1<LargeTransferSize>();
 }
 
-void testNonCopyableMessage()
-{
-    // It should only compile to see if the only requirement to Message is to be Default-Constructable.
-
-    Context context;
-    Worker worker{context};
-    DatagramReceiver<NonCopyableMessage> receiver{context, 10000};
-    DatagramSender<NonCopyableMessage> sender{context};
-    sender.asyncSend(NonCopyableMessage{}, "127.0.0.1", 10000, 0s);
-    std::string host;
-    std::uint16_t port;
-    receiver.asyncReceive(0s, [](auto && ...) {});
-    std::cout << "SUCCESS!\n";
-}
+// --- ATTENTION ---
+// The following tests must be checked manually.
 
 void testWorkerPool()
 {
@@ -613,8 +613,7 @@ void testWorkerPool()
                 std::this_thread::sleep_for(1ms);
             });
     }
-
-    sleep(1);
+	sleep(1);
 }
 
 void testWorkSerializer()
@@ -632,11 +631,7 @@ void testWorkSerializer()
                 std::this_thread::sleep_for(1ms);
             }));
     }
-
-    sleep(1);
 }
 
 }
 }
-
-

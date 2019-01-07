@@ -49,6 +49,9 @@ const Error encoding{codes::encoding};
 namespace codes { ErrorCode decoding{4}; }
 const Error decoding{codes::decoding};
 
+namespace codes { ErrorCode invalidFrame{5}; }
+const Error invalidFrame{codes::invalidFrame};
+
 }
 }
 

@@ -1,7 +1,6 @@
 ## TODO
 
 ### implementation
-- google test
 - repalcement for Busylock: stop(); waitUntilReady; runOperation()
     - for Timer (!!!), DatagramReceiver, ServiceServer
     
