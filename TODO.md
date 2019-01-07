@@ -4,5 +4,3 @@
 - doxygen 
 - examples
 - README
-
-- CMAKE installation

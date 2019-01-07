@@ -7,7 +7,7 @@
 
 #include <cstdint>
 #include <vector>
-#include "../include/Message.h"
+#include "../include/asionet/Message.h"
 
 namespace protocol
 {

@@ -6,14 +6,14 @@
 #include "TestUtils.h"
 #include <boost/asio/ip/tcp.hpp>
 #include <iostream>
-#include "../include/ServiceServer.h"
+#include "../include/asionet/ServiceServer.h"
 #include "TestService.h"
-#include "../include/ServiceClient.h"
-#include "../include/DatagramReceiver.h"
-#include "../include/DatagramSender.h"
-#include "../include/Worker.h"
-#include "../include/WorkerPool.h"
-#include "../include/WorkSerializer.h"
+#include "../include/asionet/ServiceClient.h"
+#include "../include/asionet/DatagramReceiver.h"
+#include "../include/asionet/DatagramSender.h"
+#include "../include/asionet/Worker.h"
+#include "../include/asionet/WorkerPool.h"
+#include "../include/asionet/WorkSerializer.h"
 #include <gtest/gtest.h>
 
 using boost::asio::ip::tcp;

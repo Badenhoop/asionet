@@ -2,7 +2,7 @@
 // Created by philipp on 05.01.19.
 //
 
-#include "../include/Wait.h"
+#include "../include/asionet/Wait.h"
 
 namespace asionet
 {

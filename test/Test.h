@@ -6,7 +6,7 @@
 #define PROTOCOL_NETWORKTEST_H_H
 
 #include <string>
-#include "../include/Message.h"
+#include "../include/asionet/Message.h"
 
 namespace asionet
 {

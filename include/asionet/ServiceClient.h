@@ -5,15 +5,12 @@
 #ifndef PROTOCOL_TCPNETWORKSERVICECLIENT_H
 #define PROTOCOL_TCPNETWORKSERVICECLIENT_H
 
-#include <string>
-#include <functional>
 #include <boost/asio/io_service.hpp>
 #include <boost/asio/ip/tcp.hpp>
 #include <boost/asio/connect.hpp>
 #include "Message.h"
 #include "Utils.h"
 #include "Error.h"
-#include "Busyable.h"
 #include "Context.h"
 #include "OperationQueue.h"
 

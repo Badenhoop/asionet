@@ -1,0 +1,12 @@
+# - Config file for the asionet package
+# It defines the following variable
+#  asionet_INCLUDE_DIRS - include directories for asionet
+
+# Compute paths
+get_filename_component(ASIONET_CMAKE_DIR "${CMAKE_CURRENT_LIST_FILE}" PATH)
+set(asionet_INCLUDE_DIRS "@CONF_INCLUDE_DIRS@")
+
+# Our library dependencies (contains definitions for IMPORTED targets)
+if(NOT TARGET asionet)
+    include("${ASIONET_CMAKE_DIR}/asionetTargets.cmake")
+endif()

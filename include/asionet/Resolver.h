@@ -9,7 +9,6 @@
 #include <boost/asio/ip/tcp.hpp>
 #include "Error.h"
 #include "Utils.h"
-#include "Busyable.h"
 #include "Context.h"
 #include "OperationQueue.h"
 

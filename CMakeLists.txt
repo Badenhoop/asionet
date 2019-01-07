@@ -14,30 +14,110 @@ set(CMAKE_CXX_FLAGS "-pthread")
 # =========================
 ###########################
 set(SOURCE_FILES
-        include/Context.h
-        include/Socket.h
-        include/Stream.h
-        include/Message.h
-        include/ServiceClient.h
-        include/ServiceServer.h
-        include/DatagramReceiver.h
-        include/DatagramSender.h
-        include/Time.h
-        include/Timer.h
-        include/Resolver.h
-        include/Utils.h
-        include/Closeable.h
-        include/Error.h
-        include/Frame.h
-        include/Busyable.h
-        include/Worker.h
-        include/WorkerPool.h
-        include/WorkSerializer.h
-        include/OperationQueue.h
-        include/Monitor.h
-        include/Wait.h
-        include/OverrideOperation.h
+        include/asionet/Context.h
+        include/asionet/Socket.h
+        include/asionet/Stream.h
+        include/asionet/Message.h
+        include/asionet/ServiceClient.h
+        include/asionet/ServiceServer.h
+        include/asionet/DatagramReceiver.h
+        include/asionet/DatagramSender.h
+        include/asionet/Time.h
+        include/asionet/Timer.h
+        include/asionet/Resolver.h
+        include/asionet/Utils.h
+        include/asionet/Closeable.h
+        include/asionet/Error.h
+        include/asionet/Frame.h
+        include/asionet/Worker.h
+        include/asionet/WorkerPool.h
+        include/asionet/WorkSerializer.h
+        include/asionet/OperationQueue.h
+        include/asionet/Monitor.h
+        include/asionet/Wait.h
+        include/asionet/OverrideOperation.h
         src/Wait.cpp)
+
+set(PUBLIC_HEADER_FILES
+        include/asionet/Context.h
+        include/asionet/Socket.h
+        include/asionet/Stream.h
+        include/asionet/Message.h
+        include/asionet/ServiceClient.h
+        include/asionet/ServiceServer.h
+        include/asionet/DatagramReceiver.h
+        include/asionet/DatagramSender.h
+        include/asionet/Time.h
+        include/asionet/Timer.h
+        include/asionet/Resolver.h
+        include/asionet/Utils.h
+        include/asionet/Closeable.h
+        include/asionet/Error.h
+        include/asionet/Frame.h
+        include/asionet/Worker.h
+        include/asionet/WorkerPool.h
+        include/asionet/WorkSerializer.h
+        include/asionet/OperationQueue.h
+        include/asionet/Monitor.h
+        include/asionet/Wait.h
+        include/asionet/OverrideOperation.h)
+
+foreach(HEADER ${PUBLIC_HEADER_FILES})
+    set(PUBLIC_HEADER_FILES_COMBINED "${PUBLIC_HEADER_FILES_COMBINED}\\;${HEADER}")
+endforeach()
+
+add_library(asionet STATIC ${SOURCE_FILES})
+
+# Specify public header files
+set_target_properties(asionet PROPERTIES PUBLIC_HEADER ${PUBLIC_HEADER_FILES_COMBINED})
+target_link_libraries(asionet ${Boost_LIBRARIES})
+
+#############################
+# Specify install directories
+#############################
+set(INSTALL_LIB_DIR lib/asionet)
+set(INSTALL_INCLUDE_DIR include/asionet)
+set(INSTALL_CMAKE_DIR lib/asionet/CMake)
+
+# Make relative paths absolute (needed later on)
+foreach(p LIB INCLUDE CMAKE)
+    set(var INSTALL_${p}_DIR)
+    if(NOT IS_ABSOLUTE "${${var}}")
+        set(${var} "${CMAKE_INSTALL_PREFIX}/${${var}}")
+    endif()
+endforeach()
+
+####################################################
+# Create the *Config.cmake and *ConfigVersion files
+####################################################
+# Get the relative path from the cmake install directory to the include install directory
+file(RELATIVE_PATH REL_INCLUDE_DIR "${INSTALL_CMAKE_DIR}" "${INSTALL_INCLUDE_DIR}")
+
+# Configure *Config.cmake.in for the install tree
+# Put it inside the cmake-files directory (which is located inside the binary directory)
+set(CONF_INCLUDE_DIRS "\${ASIONET_CMAKE_DIR}/${REL_INCLUDE_DIR}/..")
+configure_file(asionetConfig.cmake.in
+        "${PROJECT_BINARY_DIR}${CMAKE_FILES_DIRECTORY}/asionetConfig.cmake"
+        @ONLY)
+
+########################
+# Install asionet
+########################
+# Install library and header files
+install(TARGETS asionet
+        EXPORT asionetTargets
+        LIBRARY DESTINATION "${INSTALL_LIB_DIR}"
+        ARCHIVE DESTINATION "${INSTALL_LIB_DIR}"
+        RUNTIME DESTINATION "${INSTALL_LIB_DIR}" # for windows
+        PUBLIC_HEADER DESTINATION "${INSTALL_INCLUDE_DIR}")
+
+# Install the asionetConfig.cmake
+install(FILES "${PROJECT_BINARY_DIR}${CMAKE_FILES_DIRECTORY}/asionetConfig.cmake"
+        DESTINATION "${INSTALL_CMAKE_DIR}")
+
+# Install the export set for use with the install-tree
+install(EXPORT asionetTargets
+        DESTINATION "${INSTALL_CMAKE_DIR}")
 
 ########################
 # Test Executable Target
