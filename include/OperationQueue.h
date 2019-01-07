@@ -34,7 +34,9 @@ public:
 	template<typename AsyncOperation, typename ... AsyncOperationArgs>
 	void dispatch(const AsyncOperation & asyncOperation, AsyncOperationArgs && ... asyncOperationArgs)
 	{
-		std::lock_guard<std::mutex> lock{mutex};
+		// It could be absolutely possible that in asyncOperation someone access methods
+		// of this object within the same thread. This is why we need a recursive mutex.
+		std::lock_guard<std::recursive_mutex> lock{mutex};
 
 		// If queue is empty, we can call the wrapped handler directly.
 		// Else we create an operation handler which executes the passed async operation along with its arguments.
@@ -56,7 +58,7 @@ public:
 
 	void notifyFinishedOperation()
 	{
-		std::lock_guard<std::mutex> lock{mutex};
+		std::lock_guard<std::recursive_mutex> lock{mutex};
 		if (operationQueue.empty())
 		{
 			executing = false;
@@ -67,11 +69,10 @@ public:
 		operationQueue.pop();
 	}
 
-	void stop()
+	void cancelQueuedOperations()
 	{
-		std::lock_guard<std::mutex> lock{mutex};
+		std::lock_guard<std::recursive_mutex> lock{mutex};
 		operationQueue = std::queue<std::function<void()>>{};
-		executing = false;
 	}
 
 	class FinishedOperationNotifier
@@ -88,7 +89,7 @@ public:
 		}
 
 		FinishedOperationNotifier(FinishedOperationNotifier && other) noexcept
-			: queue(other.queue), enabled(true)
+			: queue(other.queue), enabled(other.enabled.load())
 		{
 			other.enabled = false;
 		}
@@ -99,6 +100,12 @@ public:
 
 		FinishedOperationNotifier & operator=(FinishedOperationNotifier && other) noexcept = delete;
 
+		void notify()
+		{
+			enabled = false;
+			queue.notifyFinishedOperation();
+		}
+
 	private:
 		OperationQueue & queue;
 		std::atomic<bool> enabled{true};
@@ -106,7 +113,7 @@ public:
 
 private:
 	asionet::Context & context;
-	std::mutex mutex;
+	std::recursive_mutex mutex;
 	std::queue<std::function<void()>> operationQueue;
 	bool executing{false};
 };

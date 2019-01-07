@@ -47,7 +47,7 @@ public:
 	void stop()
 	{
 		closeable::Closer<Socket>::close(socket);
-		operationQueue.stop();
+		operationQueue.cancelQueuedOperations();
 	}
 
 private:
@@ -65,12 +65,12 @@ private:
 		           SendHandler && handler)
 			: data(std::move(data))
 			  , handler(std::move(handler))
-			  , notifier(sender.operationQueue)
+			  , finishedNotifier(sender.operationQueue)
 		{}
 
 		std::shared_ptr<std::string> data;
 		SendHandler handler;
-		utils::OperationQueue::FinishedOperationNotifier notifier;
+		utils::OperationQueue::FinishedOperationNotifier finishedNotifier;
 	};
 
 	void asyncSendOperation(std::shared_ptr<std::string> & data,
@@ -89,7 +89,10 @@ private:
 		asionet::socket::asyncSendTo(
 			context, socket, dataRef, ip, port, timeout,
 			[this, state = std::move(state)](const auto & error)
-			{ state->handler(error); });
+			{
+				state->finishedNotifier.notify();
+				state->handler(error);
+			});
 	}
 
 	void setupSocket()

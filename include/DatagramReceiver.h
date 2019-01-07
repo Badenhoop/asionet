@@ -29,7 +29,7 @@ public:
 		  , bindingPort(bindingPort)
 		  , socket(context)
 		  , buffer(maxMessageSize + Frame::HEADER_SIZE)
-		  , overrideOperation(context)
+		  , overrideOperation(context, [this]{ this->stopOperation(); })
 	{}
 
 	void asyncReceive(time::Duration timeout, ReceiveHandler handler)
@@ -41,8 +41,8 @@ public:
 
 	void stop()
 	{
-		closeable::Closer<Socket>::close(socket);
-		overrideOperation.stop();
+		stopOperation();
+		overrideOperation.cancelPendingOperation();
 	}
 
 private:
@@ -62,11 +62,11 @@ private:
 		AsyncState(DatagramReceiver<Message> & receiver,
 		           ReceiveHandler && handler)
 			: handler(std::move(handler))
-			  , notifier(receiver.overrideOperation)
+			  , finishedNotifier(receiver.overrideOperation)
 		{}
 
 		ReceiveHandler handler;
-		utils::OverrideOperation::FinishedOperationNotifier notifier;
+		utils::OverrideOperation::FinishedOperationNotifier finishedNotifier;
 	};
 
 	void asyncReceiveOperation(time::Duration & timeout, ReceiveHandler & handler)
@@ -79,8 +79,14 @@ private:
 			context, socket, buffer, timeout,
 			[state = std::move(state)] (const auto & error, const auto & message, const auto & senderHost, auto senderPort)
 			{
+				state->finishedNotifier.notify();
 				state->handler(error, message, senderHost, senderPort);
 			});
+	}
+
+	void stopOperation()
+	{
+		closeable::Closer<Socket>::close(socket);
 	}
 
 	void setupSocket()

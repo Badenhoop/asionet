@@ -63,7 +63,7 @@ public:
 	void stop()
 	{
 		closeable::Closer<Socket>::close(socket);
-		operationQueue.stop();
+		operationQueue.cancelQueuedOperations();
 	}
 
 private:
@@ -84,7 +84,7 @@ private:
 			  , startTime(std::move(startTime))
 			  , buffer(client.maxMessageSize + Frame::HEADER_SIZE)
 			  , closer(client.socket)
-			  , notifier(client.operationQueue)
+			  , finishedNotifier(client.operationQueue)
 		{}
 
 		CallHandler handler;
@@ -93,7 +93,7 @@ private:
 		time::TimePoint startTime;
 		boost::asio::streambuf buffer;
 		closeable::Closer<Socket> closer;
-		utils::OperationQueue::FinishedOperationNotifier notifier;
+		utils::OperationQueue::FinishedOperationNotifier finishedNotifier;
 	};
 
 	asionet::Context & context;
@@ -125,6 +125,7 @@ private:
 				if (error)
 				{
 					std::shared_ptr<ResponseMessage> noResponse;
+					state->finishedNotifier.notify();
 					state->handler(error, noResponse);
 					return;
 				}
@@ -142,6 +143,7 @@ private:
 						if (error)
 						{
 							std::shared_ptr<ResponseMessage> noResponse;
+							state->finishedNotifier.notify();
 							state->handler(error, noResponse);
 							return;
 						}
@@ -156,6 +158,7 @@ private:
 							context, socket, bufferRef, timeoutRef,
 							[this, state = std::move(state)](auto const & error, const auto & response)
 							{
+								state->finishedNotifier.notify();
 								state->handler(error, response);
 							});
 					});

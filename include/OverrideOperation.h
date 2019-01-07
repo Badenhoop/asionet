@@ -16,14 +16,14 @@ namespace utils
 class OverrideOperation
 {
 public:
-	explicit OverrideOperation(asionet::Context & context)
-		: context(context)
+	explicit OverrideOperation(asionet::Context & context, std::function<void()> stopOperation)
+		: context(context), stopOperation(std::move(stopOperation))
 	{}
 
 	template<typename AsyncOperation, typename ... AsyncOperationArgs>
 	void dispatch(const AsyncOperation & asyncOperation, AsyncOperationArgs && ... asyncOperationArgs)
 	{
-		std::lock_guard<std::mutex> lock{mutex};
+		std::lock_guard<std::recursive_mutex> lock{mutex};
 		if (!executing)
 		{
 			executing = true;
@@ -31,6 +31,7 @@ public:
 			return;
 		}
 
+		stopOperation();
 		pendingOperation = std::make_unique<std::function<void()>>(
 			[asyncOperation, asyncOperationArgs...]() mutable
 			{
@@ -40,7 +41,7 @@ public:
 
 	void notifyFinishedOperation()
 	{
-		std::lock_guard<std::mutex> lock{mutex};
+		std::lock_guard<std::recursive_mutex> lock{mutex};
 		if (!pendingOperation)
 		{
 			executing = false;
@@ -51,11 +52,10 @@ public:
 		pendingOperation = nullptr;
 	}
 
-	void stop()
+	void cancelPendingOperation()
 	{
-		std::lock_guard<std::mutex> lock{mutex};
+		std::lock_guard<std::recursive_mutex> lock{mutex};
 		pendingOperation = nullptr;
-		executing = false;
 	}
 
 	class FinishedOperationNotifier
@@ -72,7 +72,7 @@ public:
 		}
 
 		FinishedOperationNotifier(FinishedOperationNotifier && other) noexcept
-			: operation(other.operation), enabled(true)
+			: operation(other.operation), enabled(other.enabled.load())
 		{
 			other.enabled = false;
 		}
@@ -83,6 +83,12 @@ public:
 
 		FinishedOperationNotifier & operator=(FinishedOperationNotifier && other) noexcept = delete;
 
+		void notify()
+		{
+			enabled = false;
+			operation.notifyFinishedOperation();
+		}
+
 	private:
 		OverrideOperation & operation;
 		std::atomic<bool> enabled{true};
@@ -90,9 +96,10 @@ public:
 
 private:
 	asionet::Context & context;
-	std::mutex mutex;
+	std::recursive_mutex mutex;
 	std::unique_ptr<std::function<void()>> pendingOperation = nullptr;
 	bool executing{false};
+	std::function<void()> stopOperation;
 };
 
 }

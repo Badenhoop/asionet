@@ -94,7 +94,7 @@ public:
     void stop()
     {
         closeable::Closer<UnderlyingResolver>::close(resolver);
-	    operationQueue.stop();
+        operationQueue.cancelQueuedOperations();
     }
 
 private:
@@ -110,11 +110,11 @@ private:
         AsyncState(Resolver & resolver,
                    const ResolveHandler & handler)
             : handler(handler)
-              , notifier(resolver.operationQueue)
+              , finishedNotifier(resolver.operationQueue)
         {}
 
         ResolveHandler handler;
-        utils::OperationQueue::FinishedOperationNotifier notifier;
+        utils::OperationQueue::FinishedOperationNotifier finishedNotifier;
     };
 
     void asyncResolveOperation(const std::string & host,
@@ -138,6 +138,7 @@ private:
             timeout,
             [this, state = std::move(state)](const auto & error, auto endpointIterator)
             {
+	            state->finishedNotifier.notify();
                 state->handler(error, this->endpointsFromIterator(endpointIterator));
             },
             query);
