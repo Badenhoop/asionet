@@ -1,6 +1,6 @@
 ## TODO
 
 ### documentation
-- doxygen 
+- doxygen
 - examples
 - README
