@@ -1,8 +1,8 @@
 # asionet
 
 In case you've ever done some network programming in C++, you probably stumbled upon the quasi-standard boost::asio library.
-It's asynchronous programming paradigm which makes it scalable but on the other side, it's takes quite some time learn how to use it correctly.   
-asionet is built on top of boost::asio which makes it 100% compatible but easier to use at the same time.
+It uses asynchronous programming making it scalable but on the other side, it takes quite some time to learn how to use it correctly.   
+**asionet** is built on top of boost::asio which makes it 100% compatible with it but easier to use at the same time.
 For example, managing timeouts and sending and receiving serialized messages is done with only a few lines of code. 
 
 ## Installation
