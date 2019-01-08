@@ -56,7 +56,7 @@ sender.asyncSend("Hello World!", "127.0.0.1", 4242, 10ms);
 
 ### Defining custom messages
 
-Wouldn't it be nice to just send our own data types as messages over the network?
+Wouldn't it be nice to just send your own data types as messages over the network?
 Let's assume we want to program the client for an online game so we have to send updates about our player's state.
 
 ```cpp 
@@ -94,7 +94,7 @@ struct Encoder<PlayerState>
                                  {"health", playerState.health } };
         data = j.dump();
     }
-}
+};
 
 }}
 ```
@@ -121,7 +121,7 @@ struct Decoder<PlayerState>
              j.at("health").get<float>()
          );
     }
-}
+};
 
 }}
 ```
@@ -139,3 +139,15 @@ receiver.asyncReceive(1s, [](const asionet::Error & error,
     std::cout << "player: " << playerState->name << "\n"; 
 });
 ```
+
+### Services
+
+TODO
+
+### Practices to handle dangling references
+
+TODO
+
+### A note on thread safety
+
+TODO
