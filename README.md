@@ -34,7 +34,7 @@ Just insert the following into your CMakeLists.txt file:
     find_package(asionet)
     link_libraries(asionet)
 
-## Examples
+## Tutorial
 
 ### Receiving string messages over UDP
 
@@ -156,13 +156,13 @@ receiver.asyncReceive(1s, [](const auto & error,
 
 ### Services
 
-A common networking pattern consists of sending a request to a server which reacts by sending a response back to the client.
-For instance, this happens in http.
-Using asionet, it's easy to implementing this pattern which is sometimes referred to as **services**.
+A common network pattern consists of sending a request to a server which reacts by sending a response back to the client.
+This happens in http for instance.
+Using asionet, it's easy to implement this pattern.
 
 Assume that we want to create a server which delivers chat messages based on a query.
 The query consists of two user-IDs defining the chat and the number of most recent messages that should be delivered.
-Let's create some classes to model this objective.
+Let's create some classes to model this scenario.
 
 ```cpp
 
@@ -211,8 +211,8 @@ server.advertiseService([](const boost::asio::ip::tcp::endpoint & senderEndpoint
     response = /* create your response */
 });
 ```
-That's it. Simple right?
-Note that the request message (which is 'query' in this case) is passed by a const reference to shared_ptr but on the other hand the response message is a "normal" reference.
+That's it. Simple, right?
+Note that the request message (which is 'query' in this case) is passed as a const reference to shared_ptr but on the other hand the response message is a "normal" reference.
 This is because asionet was designed to avoid unnecessary copies. 
 Imagine you want to store the potentially large request message somewhere else in your program.
 You can do this by simply copying the pointer instead of the entire object.
@@ -234,7 +234,7 @@ client.asyncCall(
 
 ### Ensuring thread-safety
 
-An important advantage of asynchronous programming is that it is easier to write thread safe code.
+An important advantage of asynchronous programming is that it is easier to write thread-safe code.
 Imagine all asynchronous handlers are invoked from a single thread.
 Then there's no need for explicit locking of shared state between the handlers since everything is running in sequence (not concurrently).
 
@@ -282,27 +282,32 @@ std::cout << counter;
 We just use the WorkSerializer's call operator by taking the handler as input and the output should be 1000000 now. 
 So whenever you want your handlers to not run concurrently, just wrap them inside the SAME WorkSerializer object. 
 
+... and of course, in this particular example, there's nothing else that is executed so we could have used only a single worker instead to make it thread-safe.
+But imagine you would also have other asynchronous operations running next to those which increment the counter.
+Then, all other handlers would still be running concurrently if they are not wrapped inside a WorkSerializer.
+
+And finally, if you have two WorkSerializer objects s1 and s2, they don't care about each other meaning that handlers wrapped inside s1 are running concurrently to handlers wrapped inside s2.
+
 ### Lifetime management
 
 We silently ignored the dangerous dangling references problem in the code snippets above which can be easily overlooked.
-The problem with running objects in handlers is that by the time a handler is executed, its containing objects could be already destroyed.
+The problem with running objects in handlers is that by the time a handler is executed, its containing objects could be already destructed.
 
 This is made clear by the following example:
 
 ```cpp
 asionet::Context context;
-// Create 4 threads that are concurrently dispatching handlers from the context object.
 asionet::Worker worker{context};
 
 {
-    std::string text = "This is goes out of scope!";
+    std::string text = "This goes out of scope!";
     context.post([&] { std::cout << text; });
 }
 
 // Do something else...
 ```
 
-Here, text could be already destructed by the time the posted handler executes since this happens on a different thread.
+Here, 'text' could be already destructed by the time the posted handler executes since this happens on a different thread.
 When accessing an invalid reference, the behavior is undefined.
 Those types of bugs can be extremely hard to debug.
 Therefore, we need some coding practice to systematically avoid this issue.
@@ -311,7 +316,6 @@ A good solution to the example above is to use a shared_ptr and pass that inside
 
 ```cpp
 asionet::Context context;
-// Create 4 threads that are concurrently dispatching handlers from the context object.
 asionet::Worker worker{context};
 
 {
@@ -322,7 +326,7 @@ asionet::Worker worker{context};
 // Do something else...
 ```
 
-However, it can be tedious and bad performance to make every object inside a handler shared_ptr.
+However, it can be tedious and of bad performance to make every object a shared_ptr.
 Therefore, we could also use the shared_from_this pattern:
 
 ```cpp
@@ -363,7 +367,6 @@ Consider the following:
 
 ```cpp
 asionet::Context context;
-// Create 4 threads that are concurrently dispatching handlers from the context object.
 asionet::WorkerPool workers{context, 4};
 
 context.post([] { /* Operation 1 */ });
@@ -378,7 +381,6 @@ asionet provides the **Waiter** and **Waitable** classes for this purpose:
 
 ```cpp
 asionet::Context context;
-// Create 4 threads that are concurrently dispatching handlers from the context object.
 asionet::WorkerPool workers{context, 4};
 
 asionet::Waiter{context} w;
@@ -433,6 +435,6 @@ boost::asio::ip::tcp::endpoint endpoint{
     boost::asio::ip::address::from_string("1.2.3.4"), 4242};
 socket.connect(endpoint);
 // Send the message over the socket.
-asionet::message::asyncSend(socket, PlayerState{1.f, 0.f, 0.5f}, 1s);
+asionet::message::asyncSend(socket, PlayerState{"name", 1.f, 0.f, 0.5f}, 1s);
 ```
 
