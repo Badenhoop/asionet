@@ -86,12 +86,12 @@ bool decode(const std::string & data, std::shared_ptr<Message> & message)
 }
 
 template<typename Message, typename SyncWriteStream>
-void asyncSend(asionet::Context & context,
-               SyncWriteStream & stream,
+void asyncSend(SyncWriteStream & stream,
                const Message & message,
                const time::Duration & timeout,
-               const SendHandler & handler)
+               SendHandler handler = [] (auto && ...) {})
 {
+	auto & context = stream.get_executor().context();
 	auto data = std::make_shared<std::string>();
 	if (!internal::encode(message, *data))
 	{
@@ -104,20 +104,20 @@ void asyncSend(asionet::Context & context,
 	auto & dataRef = *data;
 
 	asionet::stream::asyncWrite(
-		context, stream, dataRef, timeout,
-		[handler, data = std::move(data)](const auto & errorCode) { handler(errorCode); });
+		stream, dataRef, timeout,
+		[handler = std::move(handler), data = std::move(data)](const auto & errorCode) { handler(errorCode); });
 };
 
 template<typename Message, typename SyncReadStream>
-void asyncReceive(asionet::Context & context,
-                  SyncReadStream & stream,
+void asyncReceive(SyncReadStream & stream,
                   boost::asio::streambuf & buffer,
                   const time::Duration & timeout,
-                  const ReceiveHandler<Message> & handler)
+                  ReceiveHandler<Message> handler)
 {
+	auto & context = stream.get_executor().context();
 	asionet::stream::asyncRead(
-		context, stream, buffer, timeout,
-		[handler](const auto & errorCode, const auto & data)
+		stream, buffer, timeout,
+		[handler = std::move(handler)](const auto & errorCode, const auto & data)
 		{
 			std::shared_ptr<Message> message;
 			if (!internal::decode(data, message))
@@ -130,26 +130,25 @@ void asyncReceive(asionet::Context & context,
 };
 
 template<typename Message, typename DatagramSocket>
-void asyncSendDatagram(asionet::Context & context,
-                       DatagramSocket & socket,
+void asyncSendDatagram(DatagramSocket & socket,
                        const Message & message,
                        const std::string & ip,
                        std::uint16_t port,
                        const time::Duration & timeout,
-                       const SendToHandler & handler)
+                       SendToHandler handler)
 {
 	using Endpoint = boost::asio::ip::udp::endpoint;
-	asyncSendDatagram(context, socket, message, Endpoint{boost::asio::ip::address::from_string(ip), port}, timeout, handler);
+	asyncSendDatagram(socket, message, Endpoint{boost::asio::ip::address::from_string(ip), port}, timeout, handler);
 }
 
 template<typename Message, typename DatagramSocket, typename Endpoint>
-void asyncSendDatagram(asionet::Context & context,
-                       DatagramSocket & socket,
+void asyncSendDatagram(DatagramSocket & socket,
                        const Message & message,
                        const Endpoint & endpoint,
                        const time::Duration & timeout,
-                       const SendToHandler & handler)
+                       SendToHandler handler)
 {
+	auto & context = socket.get_executor().context();
 	auto data = std::make_shared<std::string>();
 	if (!internal::encode(message, *data))
 	{
@@ -162,20 +161,20 @@ void asyncSendDatagram(asionet::Context & context,
 	auto & dataRef = *data;
 
 	asionet::socket::asyncSendTo(
-		context, socket, dataRef, endpoint, timeout,
-		[handler, data = std::move(data)](const auto & error) { handler(error); });
+		socket, dataRef, endpoint, timeout,
+		[handler = std::move(handler), data = std::move(data)](const auto & error) { handler(error); });
 }
 
 template<typename Message, typename DatagramSocket>
-void asyncReceiveDatagram(asionet::Context & context,
-                          DatagramSocket & socket,
+void asyncReceiveDatagram(DatagramSocket & socket,
                           std::vector<char> & buffer,
                           const time::Duration & timeout,
-                          const ReceiveFromHandler<Message> & handler)
+                          ReceiveFromHandler<Message> handler)
 {
+	auto & context = socket.get_executor().context();
 	asionet::socket::asyncReceiveFrom(
-		context, socket, buffer, timeout,
-		[handler](const auto & error, const auto & data, const auto & senderEndpoint)
+		socket, buffer, timeout,
+		[handler = std::move(handler)](const auto & error, const auto & data, const auto & senderEndpoint)
 		{
 			std::shared_ptr<Message> message;
 			if (!internal::decode(data, message))

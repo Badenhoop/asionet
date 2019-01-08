@@ -94,7 +94,7 @@ private:
 		auto state = std::make_shared<AsyncState>(*this, std::move(data), std::move(handler));
 
 		asionet::socket::asyncSendTo(
-			context, socket, dataRef, endpoint, timeout,
+			socket, dataRef, endpoint, timeout,
 			[this, state = std::move(state)](const auto & error)
 			{
 				state->finishedNotifier.notify();

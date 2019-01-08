@@ -122,7 +122,7 @@ private:
 
 		// Connect to server.
 		asionet::socket::asyncConnect(
-			context, socket, host, port, timeoutRef,
+			socket, host, port, timeoutRef,
 			[this, state = std::move(state)](const auto & error) mutable
 			{ this->connectHandler(state, error); });
 	}
@@ -140,7 +140,7 @@ private:
 		auto & timeoutRef = state->timeout;
 
 		asionet::socket::asyncConnect(
-			context, socket, endpointIterator, timeoutRef,
+			socket, endpointIterator, timeoutRef,
 			[this, state = std::move(state)](const auto & error) mutable
 			{ this->connectHandler(state, error); });
 	}
@@ -162,7 +162,7 @@ private:
 
 		// Send the request.
 		asionet::stream::asyncWrite(
-			context, socket, *sendDataRef, timeoutRef,
+			socket, *sendDataRef, timeoutRef,
 			[this, state = std::move(state)](const auto & error) mutable
 			{ this->writeHandler(state, error); });
 	}
@@ -184,7 +184,7 @@ private:
 
 		// Receive the response.
 		asionet::message::asyncReceive<ResponseMessage>(
-			context, socket, bufferRef, timeoutRef,
+			socket, bufferRef, timeoutRef,
 			[this, state = std::move(state)](auto const & error, const auto & response)
 			{
 				state->finishedNotifier.notify();

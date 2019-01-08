@@ -137,7 +137,7 @@ private:
 					auto & receiveTimeoutRef = serviceState->receiveTimeout;
 
 					asionet::message::asyncReceive<RequestMessage>(
-						context, socketRef, bufferRef, receiveTimeoutRef,
+						socketRef, bufferRef, receiveTimeoutRef,
 						[this, serviceState = std::move(serviceState)](const auto & errorCode, const auto & request)
 						{
 							// If a receive has timed out we treat it like we've never
@@ -152,7 +152,7 @@ private:
 							auto & sendTimeoutRef = serviceState->sendTimeout;
 
 							asionet::message::asyncSend(
-								context, socketRef, response, sendTimeoutRef,
+								socketRef, response, sendTimeoutRef,
 								[this, serviceState = std::move(serviceState)](const auto & errorCode)
 								{
 									// We cannot be sure that the message is going to be received at the other side anyway,

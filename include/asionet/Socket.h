@@ -42,13 +42,13 @@ using ReceiveHandler = std::function<void(const error::Error & error,
                                           const boost::asio::ip::udp::endpoint & endpoint)>;
 
 template<typename SocketService>
-void asyncConnect(asionet::Context & context,
-                  SocketService & socket,
+void asyncConnect(SocketService & socket,
                   const std::string & host,
                   std::uint16_t port,
                   const time::Duration & timeout,
-                  const ConnectHandler & handler)
+                  ConnectHandler handler)
 {
+    auto & context = socket.get_executor().context();
     using namespace asionet::internal;
     using Resolver = CloseableResolver<boost::asio::ip::tcp>;
 
@@ -62,8 +62,8 @@ void asyncConnect(asionet::Context & context,
     { resolver->async_resolve(std::forward<decltype(args)>(args)...); };
 
     closeable::timedAsyncOperation(
-        context, resolveOperation, *resolver, timeout,
-        [&context, &socket, host, port, timeout, handler, resolver, startTime]
+        resolveOperation, *resolver, timeout,
+        [&socket, host, port, timeout, handler = std::move(handler), resolver, startTime]
             (const auto & error, const auto & endpointIterator)
         {
             if (error)
@@ -80,7 +80,7 @@ void asyncConnect(asionet::Context & context,
             { boost::asio::async_connect(std::forward<decltype(args)>(args)...); };
 
             closeable::timedAsyncOperation(
-                context, connectOperation, socket, newTimeout,
+                connectOperation, socket, newTimeout,
                 [handler](const auto & error, auto iterator)
                 {
                     handler(error);
@@ -91,18 +91,17 @@ void asyncConnect(asionet::Context & context,
 }
 
 template<typename SocketService, typename EndpointIterator>
-void asyncConnect(asionet::Context & context,
-                  SocketService & socket,
+void asyncConnect(SocketService & socket,
                   const EndpointIterator & endpointIterator,
                   const time::Duration & timeout,
-                  const ConnectHandler & handler)
+                  ConnectHandler handler)
 {
     auto connectOperation = [](auto && ... args)
     { boost::asio::async_connect(std::forward<decltype(args)>(args)...); };
 
     closeable::timedAsyncOperation(
-        context, connectOperation, socket, timeout,
-        [handler](const auto & error, auto iterator)
+        connectOperation, socket, timeout,
+        [handler = std::move(handler)](const auto & error, auto iterator)
         {
             handler(error);
         },
@@ -110,25 +109,23 @@ void asyncConnect(asionet::Context & context,
 }
 
 template<typename DatagramSocket>
-void asyncSendTo(asionet::Context & context,
-                 DatagramSocket & socket,
+void asyncSendTo(DatagramSocket & socket,
                  const std::string & sendData,
                  const std::string & ip,
                  std::uint16_t port,
                  const time::Duration & timeout,
-                 const SendHandler & handler)
+                 SendHandler handler = [] (auto && ...) {})
 {
     using Endpoint = boost::asio::ip::udp::endpoint;
-    asyncSendTo(context, socket, sendData, Endpoint{boost::asio::ip::address::from_string(ip), port}, timeout, handler);
+    asyncSendTo(socket, sendData, Endpoint{boost::asio::ip::address::from_string(ip), port}, timeout, handler);
 };
 
 template<typename DatagramSocket, typename Endpoint>
-void asyncSendTo(asionet::Context & context,
-                 DatagramSocket & socket,
+void asyncSendTo(DatagramSocket & socket,
                  const std::string & sendData,
                  const Endpoint & endpoint,
                  const time::Duration & timeout,
-                 const SendHandler & handler)
+                 SendHandler handler = [] (auto && ...) {})
 {
     using namespace asionet::internal;
     auto frame = std::make_shared<Frame>((const std::uint8_t *) sendData.c_str(), sendData.size());
@@ -138,8 +135,8 @@ void asyncSendTo(asionet::Context & context,
     { socket.async_send_to(std::forward<decltype(args)>(args)...); };
 
     closeable::timedAsyncOperation(
-        context, asyncOperation, socket, timeout,
-        [handler, frame = std::move(frame)](const auto & error, auto numBytesTransferred)
+        asyncOperation, socket, timeout,
+        [handler = std::move(handler), frame = std::move(frame)](const auto & error, auto numBytesTransferred)
         {
             if (numBytesTransferred < frame->getSize())
             {
@@ -153,21 +150,23 @@ void asyncSendTo(asionet::Context & context,
 };
 
 template<typename DatagramSocket>
-void asyncReceiveFrom(asionet::Context & context,
-                      DatagramSocket & socket,
+void asyncReceiveFrom(DatagramSocket & socket,
                       std::vector<char> & buffer,
                       const time::Duration & timeout,
-                      const ReceiveHandler & handler)
+                      ReceiveHandler handler)
 {
     using namespace boost::asio::ip;
     auto senderEndpoint = std::make_shared<udp::endpoint>();
+
+    // because of std::move()
+    auto & senderEndpointRef = *senderEndpoint;
 
     auto asyncOperation = [&socket](auto && ... args)
     { socket.async_receive_from(std::forward<decltype(args)>(args)...); };
 
     closeable::timedAsyncOperation(
-        context, asyncOperation, socket, timeout,
-        [&buffer, handler, senderEndpoint](const auto & error, auto numBytesTransferred)
+        asyncOperation, socket, timeout,
+        [&buffer, handler = std::move(handler), senderEndpoint = std::move(senderEndpoint)](const auto & error, auto numBytesTransferred)
         {
             std::string receiveData{};
 
@@ -186,7 +185,7 @@ void asyncReceiveFrom(asionet::Context & context,
             handler(error, receiveData, *senderEndpoint);
         },
         boost::asio::buffer(buffer),
-        *senderEndpoint);
+        senderEndpointRef);
 }
 
 }

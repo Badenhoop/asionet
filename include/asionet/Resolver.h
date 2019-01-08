@@ -121,7 +121,6 @@ private:
         { resolver.async_resolve(std::forward<decltype(args)>(args)...); };
 
         closeable::timedAsyncOperation(
-            context,
             resolveOperation,
             resolver,
             timeout,

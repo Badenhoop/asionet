@@ -74,13 +74,13 @@ template<
 	typename... AsyncOperationArgs,
 	typename Closeable,
 	typename Handler>
-void timedAsyncOperation(asionet::Context & context,
-                         AsyncOperation asyncOperation,
+void timedAsyncOperation(AsyncOperation asyncOperation,
                          Closeable & closeable,
                          const time::Duration & timeout,
                          const Handler & handler,
                          AsyncOperationArgs && ... asyncOperationArgs)
 {
+	auto & context = closeable.get_executor().context();
 	auto serializer = std::make_shared<WorkSerializer>(context);
 
 	auto timer = std::make_shared<Timer>(context);

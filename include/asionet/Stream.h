@@ -34,11 +34,10 @@ using WriteHandler = std::function<void(const error::Error & error)>;
 using ReadHandler = std::function<void(const error::Error & error, std::string & data)>;
 
 template<typename SyncWriteStream>
-void asyncWrite(asionet::Context & context,
-                SyncWriteStream & stream,
+void asyncWrite(SyncWriteStream & stream,
                 const std::string & writeData,
                 const time::Duration & timeout,
-                const WriteHandler & handler)
+                WriteHandler handler = [] (auto && ...) {})
 {
     using namespace asionet::internal;
     auto frame = std::make_shared<Frame>((const std::uint8_t *) writeData.c_str(), writeData.size());
@@ -47,8 +46,8 @@ void asyncWrite(asionet::Context & context,
     auto asyncOperation = [](auto && ... args) { boost::asio::async_write(std::forward<decltype(args)>(args)...); };
 
     closeable::timedAsyncOperation(
-        context, asyncOperation, stream, timeout,
-        [handler, frame = std::move(frame)](const auto & error, auto numBytesTransferred)
+        asyncOperation, stream, timeout,
+        [handler = std::move(handler), frame = std::move(frame)](const auto & error, auto numBytesTransferred)
         {
             if (numBytesTransferred < frame->getSize())
             {
@@ -62,11 +61,10 @@ void asyncWrite(asionet::Context & context,
 }
 
 template<typename SyncReadStream>
-void asyncRead(asionet::Context & context,
-               SyncReadStream & stream,
+void asyncRead(SyncReadStream & stream,
                boost::asio::streambuf & buffer,
                const time::Duration & timeout,
-               const ReadHandler & handler)
+               ReadHandler handler)
 {
     using asionet::internal::Frame;
     using namespace asionet::stream::internal;
@@ -77,8 +75,8 @@ void asyncRead(asionet::Context & context,
 
     // Receive frame header.
     closeable::timedAsyncOperation(
-        context, asyncOperation, stream, timeout,
-        [&context, &stream, &buffer, timeout, handler, startTime]
+        asyncOperation, stream, timeout,
+        [&stream, &buffer, timeout, handler = std::move(handler), startTime]
             (const auto & error, auto numBytesTransferred)
         {
             std::string data{};
@@ -109,8 +107,8 @@ void asyncRead(asionet::Context & context,
 
             // Receive actual data.
             closeable::timedAsyncOperation(
-                context, asyncOperation, stream, newTimeout,
-                [&buffer, handler, numDataBytes]
+                asyncOperation, stream, newTimeout,
+                [&buffer, handler = std::move(handler), numDataBytes]
                     (const auto & error, auto numBytesTransferred)
                 {
                     std::string data{};

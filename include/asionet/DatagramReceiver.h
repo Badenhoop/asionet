@@ -74,7 +74,7 @@ private:
 		auto state = std::make_shared<AsyncState>(*this, std::move(handler));
 
 		message::asyncReceiveDatagram<Message>(
-			context, socket, buffer, timeout,
+			socket, buffer, timeout,
 			[state = std::move(state)] (const auto & error, const auto & message, const auto & senderEndpoint)
 			{
 				state->finishedNotifier.notify();
