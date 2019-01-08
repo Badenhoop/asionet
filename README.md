@@ -53,13 +53,13 @@ receiver.asyncReceive(1s, [](const asionet::error::Error & error,
                              const boost::asio::ip::udp::endpoint & senderEndpoint) 
 {
     if (error) return;
-    std::cout << "received: " << *message << "\n
+    std::cout << "received: " << *message << "\n"
               << "host: " << senderEndpoint.address().to_string() << "\n" 
               << "port: " << senderEndpoint.port() << "\n"; 
 });
 ```
 
-### Sending UDP string messages over UDP
+### Sending string messages over UDP
 
 The following code sends a UDP message containing the string "Hello World!" to IP 127.0.0.1 port 4242 with operation timeout 10ms.
 
