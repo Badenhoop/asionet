@@ -144,10 +144,18 @@ receiver.asyncReceive(1s, [](const asionet::Error & error,
 
 TODO
 
-### Practices to handle dangling references
+### Lifetime management
 
 TODO
 
 ### A note on thread safety
 
 TODO
+
+### Waiting
+
+TODO
+
+### Compatibility to boost::asio
+
+TODO 

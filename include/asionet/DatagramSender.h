@@ -18,6 +18,9 @@ class DatagramSender
 {
 public:
 	using SendHandler = std::function<void(const error::Error & error)>;
+	using Protocol = boost::asio::ip::udp;
+	using Endpoint = Protocol::endpoint;
+	using Socket = Protocol::socket;
 
 	explicit DatagramSender(asionet::Context & context)
 		: context(context)
@@ -26,10 +29,18 @@ public:
 	{}
 
 	void asyncSend(const Message & message,
-	               std::string ip,
+	               const std::string & ip,
 	               std::uint16_t port,
 	               time::Duration timeout,
 	               SendHandler handler = [](auto && ...) {})
+	{
+		asyncSend(message, Endpoint{boost::asio::ip::address::from_string(ip), port}, timeout, handler);
+	}
+
+	void asyncSend(const Message & message,
+	               Endpoint endpoint,
+				   time::Duration timeout,
+				   SendHandler handler = [](auto && ...) {})
 	{
 		auto data = std::make_shared<std::string>();
 		if (!message::internal::encode(message, *data))
@@ -41,7 +52,7 @@ public:
 
 		auto asyncOperation = [this](auto && ... args)
 		{ this->asyncSendOperation(std::forward<decltype(args)>(args)...); };
-		operationQueue.dispatch(asyncOperation, data, ip, port, timeout, handler);
+		operationQueue.dispatch(asyncOperation, data, endpoint, timeout, handler);
 	}
 
 	void stop()
@@ -51,9 +62,6 @@ public:
 	}
 
 private:
-	using Udp = boost::asio::ip::udp;
-	using Socket = Udp::socket;
-
 	asionet::Context & context;
 	Socket socket;
 	utils::OperationQueue operationQueue;
@@ -74,8 +82,7 @@ private:
 	};
 
 	void asyncSendOperation(std::shared_ptr<std::string> & data,
-	                        std::string & ip,
-	                        std::uint16_t & port,
+	                        Endpoint & endpoint,
 	                        time::Duration & timeout,
 	                        SendHandler & handler)
 	{
@@ -87,7 +94,7 @@ private:
 		auto state = std::make_shared<AsyncState>(*this, std::move(data), std::move(handler));
 
 		asionet::socket::asyncSendTo(
-			context, socket, dataRef, ip, port, timeout,
+			context, socket, dataRef, endpoint, timeout,
 			[this, state = std::move(state)](const auto & error)
 			{
 				state->finishedNotifier.notify();
@@ -100,7 +107,7 @@ private:
 		if (socket.is_open())
 			return;
 
-		socket.open(Udp::v4());
+		socket.open(Protocol::v4());
 		socket.set_option(boost::asio::socket_base::broadcast{true});
 	}
 };

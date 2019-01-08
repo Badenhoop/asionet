@@ -26,12 +26,12 @@ class CloseableResolver : public Protocol::resolver
 public:
     using Resolver = typename Protocol::resolver;
     using Query = typename Resolver::query;
-    using Iterator = typename Resolver::iterator;
+    using EndpointIterator = typename Resolver::iterator;
 
     using ResolveHandler = std::function<void(const boost::system::error_code & error)>;
 
-    CloseableResolver(boost::asio::io_service & ioService)
-        : Resolver(ioService)
+    explicit CloseableResolver(asionet::Context & context)
+        : Resolver(context)
     {}
 
     void open()
@@ -59,20 +59,13 @@ private:
 
 }
 
+template<typename Protocol>
 class Resolver
 {
 public:
-    struct Endpoint
-    {
-        Endpoint(const std::string & ip, std::uint16_t port)
-            : ip(ip), port(port)
-        {}
-
-        std::string ip;
-        std::uint16_t port;
-    };
-
-    using ResolveHandler = std::function<void(const error::Error & error, const std::vector<Endpoint> & endpoints)>;
+	using UnderlyingResolver = typename internal::CloseableResolver<Protocol>;
+	using ResolveHandler = std::function<void(const error::Error & error,
+	                                          const typename UnderlyingResolver::EndpointIterator &)>;
 
     explicit Resolver(asionet::Context & context)
         : context(context)
@@ -97,9 +90,6 @@ public:
     }
 
 private:
-    using Protocol = boost::asio::ip::tcp;
-    using UnderlyingResolver = internal::CloseableResolver<Protocol>;
-
     asionet::Context & context;
     UnderlyingResolver resolver;
     utils::OperationQueue operationQueue;
@@ -123,7 +113,7 @@ private:
     {
         resolver.open();
 
-        UnderlyingResolver::Query query{host, service};
+        typename UnderlyingResolver::Query query{host, service};
 
         auto state = std::make_shared<AsyncState>(*this, handler);
 
@@ -135,26 +125,12 @@ private:
             resolveOperation,
             resolver,
             timeout,
-            [this, state = std::move(state)](const auto & error, auto endpointIterator)
+            [this, state = std::move(state)](const auto & error, const auto & endpointIterator)
             {
 	            state->finishedNotifier.notify();
-                state->handler(error, this->endpointsFromIterator(endpointIterator));
+                state->handler(error, endpointIterator);
             },
             query);
-    }
-
-    std::vector<Endpoint> endpointsFromIterator(UnderlyingResolver::Iterator iterator)
-    {
-        std::vector<Endpoint> endpoints;
-
-        while (iterator != UnderlyingResolver::Iterator{})
-        {
-            endpoints.emplace_back(iterator->endpoint().address().to_string(),
-                                   iterator->endpoint().port());
-            iterator++;
-        }
-
-        return endpoints;
     }
 };
 

@@ -250,7 +250,7 @@ struct BasicDatagram : std::enable_shared_from_this<BasicDatagram>
         Waitable waitable{waiter};
         receiver.asyncReceive(
             1s,
-            waitable([self](const auto & error, auto & message, const auto & senderHost, auto senderPort)
+            waitable([self](const auto & error, auto & message, const auto & senderEndpoint)
                      {
                          EXPECT_FALSE(error);
                          EXPECT_EQ(message->getId(), 42);
@@ -330,7 +330,7 @@ struct QueuedDatagramSending : std::enable_shared_from_this<QueuedDatagramSendin
 		Waitable waitable{waiter};
 
 		DatagramReceiver<TestMessage>::ReceiveHandler receiveHandler =
-			[&, self](const auto & error, auto & message, const std::string & senderHost, auto senderPort)
+			[&, self](const auto & error, auto & message, const auto & senderEndpoint)
 			{
 				EXPECT_FALSE(error);
 				auto i = message->getValue();
@@ -365,7 +365,7 @@ TEST(asionetTest, QueuedDatagramSending)
 
 struct Resolving : std::enable_shared_from_this<Resolving>
 {
-	Resolver resolver;
+	Resolver<boost::asio::ip::tcp> resolver;
 	Waiter waiter;
 
 	Resolving(asionet::Context & context)
@@ -379,7 +379,7 @@ struct Resolving : std::enable_shared_from_this<Resolving>
 		Waitable waitable{waiter};
 		resolver.asyncResolve(
 			"google.de", "http", 5s,
-			waitable([self](const auto & error, const auto & endpoints) { EXPECT_FALSE(error); }));
+			waitable([self](const auto & error, const auto & endpointIterator) { EXPECT_FALSE(error); }));
 		waiter.await(waitable);
 	}
 };
@@ -406,7 +406,7 @@ struct StringDatagram : std::enable_shared_from_this<StringDatagram>
 		auto self = shared_from_this();
 		Waitable waitable{waiter};
 		receiver.asyncReceive(
-			1s, waitable([&, self](const auto & error, auto & message, const std::string & senderHost, auto senderPort)
+			1s, waitable([&, self](const auto & error, auto & message, const auto & senderEndpoint)
 			             {
 				             EXPECT_FALSE(error);
 				             EXPECT_EQ(*message, "Hello World!");

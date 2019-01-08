@@ -18,11 +18,14 @@ template<typename Message>
 class DatagramReceiver
 {
 public:
+	using Protocol = boost::asio::ip::udp;
+	using Endpoint = Protocol::endpoint;
+	using Socket = Protocol::socket;
+	using Frame = asionet::internal::Frame;
 	using ReceiveHandler = std::function<
 		void(const error::Error & error,
-		     const std::shared_ptr<Message> & message,
-		     const std::string & host,
-		     std::uint16_t port)>;
+			 const std::shared_ptr<Message> & message,
+			 const Endpoint & senderEndpoint)>;
 
 	DatagramReceiver(asionet::Context & context, std::uint16_t bindingPort, std::size_t maxMessageSize = 512)
 		: context(context)
@@ -46,11 +49,6 @@ public:
 	}
 
 private:
-	using Udp = boost::asio::ip::udp;
-	using Endpoint = Udp::endpoint;
-	using Socket = Udp::socket;
-	using Frame = asionet::internal::Frame;
-
 	asionet::Context & context;
 	std::uint16_t bindingPort;
 	Socket socket;
@@ -77,10 +75,10 @@ private:
 
 		message::asyncReceiveDatagram<Message>(
 			context, socket, buffer, timeout,
-			[state = std::move(state)] (const auto & error, const auto & message, const auto & senderHost, auto senderPort)
+			[state = std::move(state)] (const auto & error, const auto & message, const auto & senderEndpoint)
 			{
 				state->finishedNotifier.notify();
-				state->handler(error, message, senderHost, senderPort);
+				state->handler(error, message, senderEndpoint);
 			});
 	}
 
@@ -94,10 +92,10 @@ private:
 		if (socket.is_open())
 			return;
 
-		socket.open(Udp::v4());
+		socket.open(Protocol::v4());
 		socket.set_option(boost::asio::socket_base::reuse_address{true});
 		socket.set_option(boost::asio::socket_base::broadcast{true});
-		socket.bind(Endpoint(Udp::v4(), bindingPort));
+		socket.bind(Endpoint(Protocol::v4(), bindingPort));
 	}
 };
 

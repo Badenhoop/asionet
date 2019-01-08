@@ -30,8 +30,7 @@ template<typename Message>
 using ReceiveFromHandler = std::function<
 	void(const error::Error & code,
 	     std::shared_ptr<Message> & message,
-	     const std::string & senderHost,
-	     std::uint16_t senderPort)>;
+	     const boost::asio::ip::udp::endpoint & endpoint)>;
 
 template<typename Message>
 struct Encoder;
@@ -134,8 +133,20 @@ template<typename Message, typename DatagramSocket>
 void asyncSendDatagram(asionet::Context & context,
                        DatagramSocket & socket,
                        const Message & message,
-                       const std::string & host,
+                       const std::string & ip,
                        std::uint16_t port,
+                       const time::Duration & timeout,
+                       const SendToHandler & handler)
+{
+	using Endpoint = boost::asio::ip::udp::endpoint;
+	asyncSendDatagram(context, socket, message, Endpoint{boost::asio::ip::address::from_string(ip), port}, timeout, handler);
+}
+
+template<typename Message, typename DatagramSocket, typename Endpoint>
+void asyncSendDatagram(asionet::Context & context,
+                       DatagramSocket & socket,
+                       const Message & message,
+                       const Endpoint & endpoint,
                        const time::Duration & timeout,
                        const SendToHandler & handler)
 {
@@ -151,7 +162,7 @@ void asyncSendDatagram(asionet::Context & context,
 	auto & dataRef = *data;
 
 	asionet::socket::asyncSendTo(
-		context, socket, dataRef, host, port, timeout,
+		context, socket, dataRef, endpoint, timeout,
 		[handler, data = std::move(data)](const auto & error) { handler(error); });
 }
 
@@ -164,15 +175,15 @@ void asyncReceiveDatagram(asionet::Context & context,
 {
 	asionet::socket::asyncReceiveFrom(
 		context, socket, buffer, timeout,
-		[handler](const auto & error, const auto & data, const auto & senderHost, auto senderPort)
+		[handler](const auto & error, const auto & data, const auto & senderEndpoint)
 		{
 			std::shared_ptr<Message> message;
 			if (!internal::decode(data, message))
 			{
-				handler(error::decoding, message, senderHost, senderPort);
+				handler(error::decoding, message, senderEndpoint);
 				return;
 			}
-			handler(error, message, senderHost, senderPort);
+			handler(error, message, senderEndpoint);
 		});
 }
 

@@ -12,13 +12,13 @@ namespace asionet
 namespace time
 {
 
-using Clock = std::chrono::steady_clock;
+using Clock = std::chrono::system_clock;
 using TimePoint = Clock::time_point;
 using Duration = Clock::duration;
 
 inline TimePoint now() noexcept
 {
-	return std::chrono::steady_clock::now();
+	return Clock::now();
 }
 
 }

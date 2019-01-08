@@ -21,8 +21,11 @@ class ServiceServer
 public:
 	using RequestMessage = typename Service::RequestMessage;
 	using ResponseMessage = typename Service::ResponseMessage;
-
-	using Endpoint = Resolver::Endpoint;
+	using Protocol = boost::asio::ip::tcp;
+	using Socket = Protocol::socket;
+	using Acceptor = Protocol::acceptor;
+	using Frame = asionet::internal::Frame;
+	using Endpoint = Protocol::endpoint;
 	using RequestReceivedHandler = std::function<void(const Endpoint & clientEndpoint,
 	                                                  const std::shared_ptr<RequestMessage> & requestMessage,
 	                                                  ResponseMessage & response)>;
@@ -55,11 +58,6 @@ public:
 	}
 
 private:
-	using Tcp = boost::asio::ip::tcp;
-	using Socket = Tcp::socket;
-	using Acceptor = Tcp::acceptor;
-	using Frame = asionet::internal::Frame;
-
 	struct AcceptState
 	{
 		AcceptState(ServiceServer<Service> & server,
@@ -117,7 +115,7 @@ private:
 	void accept(std::shared_ptr<AcceptState> & acceptState)
 	{
 		if (!acceptor.is_open())
-			acceptor = Acceptor{context, Tcp::endpoint{Tcp::v4(), bindingPort}};
+			acceptor = Acceptor{context, Protocol::endpoint{Protocol::v4(), bindingPort}};
 
 		auto serviceState = std::make_shared<ServiceState>(*this, *acceptState);
 
@@ -147,10 +145,8 @@ private:
 							if (errorCode)
 								return;
 
-							Endpoint clientEndpoint{serviceState->socket.remote_endpoint().address().to_string(),
-							                        serviceState->socket.remote_endpoint().port()};
 							ResponseMessage response;
-							serviceState->requestReceivedHandler(clientEndpoint, request, response);
+							serviceState->requestReceivedHandler(serviceState->socket.remote_endpoint(), request, response);
 
 							auto & socketRef = serviceState->socket;
 							auto & sendTimeoutRef = serviceState->sendTimeout;
