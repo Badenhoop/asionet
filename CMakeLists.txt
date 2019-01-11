@@ -5,9 +5,7 @@ set(CMAKE_CXX_STANDARD 14)
 
 # Packages to find
 find_package(Boost REQUIRED COMPONENTS system regex)
-
-# compiler flags
-set(CMAKE_CXX_FLAGS "-pthread")
+find_package(Threads)
 
 ###########################
 # NetworkLib Library Target
@@ -70,7 +68,7 @@ add_library(asionet STATIC ${SOURCE_FILES})
 
 # Specify public header files
 set_target_properties(asionet PROPERTIES PUBLIC_HEADER ${PUBLIC_HEADER_FILES_COMBINED})
-target_link_libraries(asionet ${Boost_LIBRARIES})
+target_link_libraries(asionet ${Boost_LIBRARIES} ${CMAKE_THREAD_LIBS_INIT})
 
 #############################
 # Specify install directories
@@ -131,9 +129,7 @@ set(TEST_SOURCE_FILES
         test/TestUtils.h)
 add_executable(asionetTest ${TEST_SOURCE_FILES})
 
-target_link_libraries(asionetTest ${Boost_LIBRARIES})
-
-target_link_libraries(asionetTest gtest gtest_main)
+target_link_libraries(asionetTest ${Boost_LIBRARIES} ${CMAKE_THREAD_LIBS_INIT} gtest gtest_main)
 target_include_directories(asionetTest PUBLIC ${gtest_SOURCE_DIR}/include ${gtest_SOURCE_DIR})
 
 # For debugging
