@@ -150,38 +150,41 @@ private:
 					return;
 
 				if (!acceptError)
-				{
-					auto & socketRef = serviceState->socket;
-					auto & bufferRef = serviceState->buffer;
-					auto & receiveTimeoutRef = serviceState->receiveTimeout;
-
-					asionet::message::asyncReceive<RequestMessage>(
-						socketRef, bufferRef, receiveTimeoutRef,
-						[this, serviceState = std::move(serviceState)](const auto & errorCode, const auto & request)
-						{
-							// If a receive has timed out we treat it like we've never
-							// received any message (and therefor we do not call the handler).
-							if (errorCode)
-								return;
-
-							ResponseMessage response;
-							serviceState->requestReceivedHandler(serviceState->socket.remote_endpoint(), request, response);
-
-							auto & socketRef = serviceState->socket;
-							auto & sendTimeoutRef = serviceState->sendTimeout;
-
-							asionet::message::asyncSend(
-								socketRef, response, sendTimeoutRef,
-								[this, serviceState = std::move(serviceState)](const auto & errorCode)
-								{
-									// We cannot be sure that the message is going to be received at the other side anyway,
-									// so we don't handle anything sending-wise.
-								});
-						});
-				}
+					this->handleService(serviceState);
 
 				// The next accept event will be put on the event queue.
 				this->accept(acceptState);
+			});
+	}
+
+	bool handleService(std::shared_ptr<ServiceState> & serviceState)
+	{
+		auto & socketRef = serviceState->socket;
+		auto & bufferRef = serviceState->buffer;
+		auto & receiveTimeoutRef = serviceState->receiveTimeout;
+
+		asionet::message::asyncReceive<RequestMessage>(
+			socketRef, bufferRef, receiveTimeoutRef,
+			[this, serviceState = std::move(serviceState)](const auto & errorCode, const auto & request)
+			{
+				// If a receive has timed out we treat it like we've never
+				// received any message (and therefor we do not call the handler).
+				if (errorCode)
+					return;
+
+				ResponseMessage response;
+				serviceState->requestReceivedHandler(serviceState->socket.remote_endpoint(), request, response);
+
+				auto & socketRef = serviceState->socket;
+				auto & sendTimeoutRef = serviceState->sendTimeout;
+
+				asionet::message::asyncSend(
+					socketRef, response, sendTimeoutRef,
+					[this, serviceState = std::move(serviceState)](const auto & errorCode)
+					{
+						// We cannot be sure that the message is going to be received at the other side anyway,
+						// so we don't handle anything sending-wise.
+					});
 			});
 	}
 
