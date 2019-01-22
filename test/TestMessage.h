@@ -108,25 +108,26 @@ struct Encoder<protocol::TestMessage>
 template<>
 struct Decoder<protocol::TestMessage>
 {
-    std::shared_ptr<protocol::TestMessage> operator()(const std::string & data) const
+    template<typename ConstBuffer>
+    std::shared_ptr<protocol::TestMessage> operator()(const ConstBuffer & buffer) const
     {
         using namespace protocol;
 
-        auto size = data.size();
+        auto size = buffer.size();
 
         Id id{0};
         MessageType messageType{0};
         Value value{0};
 
-        id += ((Id) data[0]);
-        id += ((Id) data[1]) << 8;
-        id += ((Id) data[2]) << 16;
-        id += ((Id) data[3]) << 24;
-        messageType += (MessageType) data[4];
-        value += ((Value) data[5]);
-        value += ((Value) data[6]) << 8;
-        value += ((Value) data[7]) << 16;
-        value += ((Value) data[8]) << 24;
+        id += ((Id) buffer[0]);
+        id += ((Id) buffer[1]) << 8;
+        id += ((Id) buffer[2]) << 16;
+        id += ((Id) buffer[3]) << 24;
+        messageType += (MessageType) buffer[4];
+        value += ((Value) buffer[5]);
+        value += ((Value) buffer[6]) << 8;
+        value += ((Value) buffer[7]) << 16;
+        value += ((Value) buffer[8]) << 24;
 
         return std::make_shared<TestMessage>(id, messageType, value);
     }

@@ -31,6 +31,7 @@
 #include "Closeable.h"
 #include "Frame.h"
 #include "Utils.h"
+#include "ConstBuffer.h"
 
 namespace asionet
 {
@@ -42,7 +43,8 @@ namespace internal
 
 inline std::uint32_t numDataBytesFromBuffer(boost::asio::streambuf & streambuf)
 {
-    auto numDataBytesStr = utils::stringFromStreambuf(streambuf, 4);
+    auto numDataBytesStr = std::string{boost::asio::buffers_begin(streambuf.data()),
+                                       boost::asio::buffers_begin(streambuf.data()) + asionet::internal::Frame::HEADER_SIZE};
     return utils::fromBigEndian<4, std::uint32_t>((const std::uint8_t *) numDataBytesStr.c_str());
 }
 
@@ -50,7 +52,7 @@ inline std::uint32_t numDataBytesFromBuffer(boost::asio::streambuf & streambuf)
 
 using WriteHandler = std::function<void(const error::Error & error)>;
 
-using ReadHandler = std::function<void(const error::Error & error, std::string & data)>;
+using ReadHandler = std::function<void(const error::Error & error, const asionet::internal::ConstStreamBuffer & data)>;
 
 template<typename SyncWriteStream>
 void asyncWrite(SyncWriteStream & stream,
@@ -86,6 +88,7 @@ void asyncRead(SyncReadStream & stream,
                ReadHandler handler)
 {
     using asionet::internal::Frame;
+    using asionet::internal::ConstStreamBuffer;
     using namespace asionet::stream::internal;
 
     auto startTime = time::now();
@@ -98,24 +101,25 @@ void asyncRead(SyncReadStream & stream,
         [&stream, &buffer, timeout, handler = std::move(handler), startTime]
             (const auto & error, auto numBytesTransferred)
         {
-            std::string data{};
-
             if (error)
             {
-                handler(error, data);
+                handler(error, ConstStreamBuffer{buffer, 0, 0});
+                buffer.consume(numBytesTransferred);
                 return;
             }
 
             if (numBytesTransferred != Frame::HEADER_SIZE)
             {
-                handler(error::invalidFrame, data);
+                handler(error::invalidFrame, ConstStreamBuffer{buffer, 0, 0});
+                buffer.consume(numBytesTransferred);
                 return;
             }
 
             auto numDataBytes = numDataBytesFromBuffer(buffer);
             if (numDataBytes == 0)
             {
-                handler(error, data);
+                handler(error, ConstStreamBuffer{buffer, 0, 0});
+                buffer.consume(numBytesTransferred);
                 return;
             }
 
@@ -125,27 +129,28 @@ void asyncRead(SyncReadStream & stream,
 	        auto asyncOperation = [](auto && ... args) { boost::asio::async_read(std::forward<decltype(args)>(args)...); };
 
             // Receive actual data.
+            // At this point, we DON'T consume the frame's header bytes in the buffer which we're going to do in the following handler.
             closeable::timedAsyncOperation(
                 asyncOperation, stream, newTimeout,
                 [&buffer, handler = std::move(handler), numDataBytes]
                     (const auto & error, auto numBytesTransferred)
                 {
-                    std::string data{};
-
                     if (error)
                     {
-                        handler(error, data);
+                        handler(error, ConstStreamBuffer{buffer, 0, 0});
+                        buffer.consume(Frame::HEADER_SIZE + numBytesTransferred);
                         return;
                     }
 
                     if (numBytesTransferred != numDataBytes)
                     {
-                        handler(error::invalidFrame, data);
+                        handler(error::invalidFrame, ConstStreamBuffer{buffer, 0, 0});
+                        buffer.consume(Frame::HEADER_SIZE + numBytesTransferred);
                         return;
                     }
 
-                    data = utils::stringFromStreambuf(buffer, numDataBytes);
-                    handler(error, data);
+                    handler(error, ConstStreamBuffer{buffer, numDataBytes, Frame::HEADER_SIZE});
+                    buffer.consume(Frame::HEADER_SIZE + numBytesTransferred);
                 },
                 stream, buffer, boost::asio::transfer_exactly(numDataBytes));
         },

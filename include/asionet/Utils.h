@@ -57,15 +57,6 @@ inline Int fromBigEndian(const std::uint8_t * bytes)
 	return result;
 }
 
-inline std::string stringFromStreambuf(boost::asio::streambuf & streambuf, std::size_t numBytes)
-{
-	auto buffers = streambuf.data();
-	std::string data{boost::asio::buffers_begin(buffers),
-	                 boost::asio::buffers_begin(buffers) + numBytes};
-	streambuf.consume(numBytes);
-	return data;
-}
-
 }
 }
 

@@ -33,6 +33,7 @@
 #include "../include/asionet/Worker.h"
 #include "../include/asionet/WorkerPool.h"
 #include "../include/asionet/WorkSerializer.h"
+#include "../include/asionet/ConstBuffer.h"
 #include <gtest/gtest.h>
 
 using boost::asio::ip::tcp;
@@ -655,6 +656,32 @@ void testWorkSerializer()
                 std::this_thread::sleep_for(1ms);
             }));
     }
+}
+
+TEST(asionetTest, ConstStreamBuffer)
+{
+	boost::asio::streambuf streambuf;
+	std::ostream os{&streambuf};
+	std::string s{"Hello World!"};
+	os << '1' << '2' << '3' << '4';
+	os << s;
+	std::size_t n = s.size();
+	std::size_t offset = 4;
+	internal::ConstStreamBuffer buffer{streambuf, n, offset};
+	EXPECT_EQ(buffer.size(), n);
+	EXPECT_EQ(buffer[4], 'o');
+	std::string o{buffer.begin(), buffer.end()};
+	EXPECT_EQ(o, s);
+}
+
+TEST(asionetTest, ConstVectorBuffer)
+{
+	std::vector<char> v = {'1', '2', '3', '4', 'A', 'B', 'C'};
+	internal::ConstVectorBuffer buffer{v, 3, 4};
+	EXPECT_EQ(buffer.size(), 3);
+	EXPECT_EQ(buffer[2], 'C');
+	std::string o{buffer.begin(), buffer.end()};
+	EXPECT_EQ(o, std::string{"ABC"});
 }
 
 }

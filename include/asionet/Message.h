@@ -67,8 +67,9 @@ struct Decoder;
 template<>
 struct Decoder<std::string>
 {
-	std::shared_ptr<std::string> operator()(const std::string & data) const
-	{ return std::make_shared<std::string>(data); }
+	template<typename ConstBuffer>
+	std::shared_ptr<std::string> operator()(const ConstBuffer & buffer) const
+	{ return std::make_shared<std::string>(buffer.begin(), buffer.end()); }
 };
 
 namespace internal
@@ -88,12 +89,12 @@ bool encode(const Message & message, std::string & data)
 	}
 }
 
-template<typename Message>
-bool decode(const std::string & data, std::shared_ptr<Message> & message)
+template<typename Message, typename ConstBuffer>
+bool decode(const ConstBuffer & buffer, std::shared_ptr<Message> & message)
 {
 	try
 	{
-		message = Decoder<Message>{}(data);
+		message = Decoder<Message>{}(buffer);
 		return true;
 	}
 	catch (...)
@@ -136,10 +137,10 @@ void asyncReceive(SyncReadStream & stream,
 	auto & context = stream.get_executor().context();
 	asionet::stream::asyncRead(
 		stream, buffer, timeout,
-		[handler = std::move(handler)](const auto & errorCode, const auto & data)
+		[handler = std::move(handler)](const auto & errorCode, const auto & constBuffer)
 		{
 			std::shared_ptr<Message> message;
-			if (!internal::decode(data, message))
+			if (!internal::decode(constBuffer, message))
 			{
 				handler(error::decoding, message);
 				return;
@@ -193,10 +194,10 @@ void asyncReceiveDatagram(DatagramSocket & socket,
 	auto & context = socket.get_executor().context();
 	asionet::socket::asyncReceiveFrom(
 		socket, buffer, timeout,
-		[handler = std::move(handler)](const auto & error, const auto & data, const auto & senderEndpoint)
+		[handler = std::move(handler)](const auto & error, const auto & constBuffer, const auto & senderEndpoint)
 		{
 			std::shared_ptr<Message> message;
-			if (!internal::decode(data, message))
+			if (!internal::decode(constBuffer, message))
 			{
 				handler(error::decoding, message, senderEndpoint);
 				return;

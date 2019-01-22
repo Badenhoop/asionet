@@ -34,6 +34,7 @@ set(SOURCE_FILES
         include/asionet/Monitor.h
         include/asionet/Wait.h
         include/asionet/OverrideOperation.h
+        include/asionet/ConstBuffer.h
         src/Wait.cpp)
 
 set(PUBLIC_HEADER_FILES
@@ -58,6 +59,7 @@ set(PUBLIC_HEADER_FILES
         include/asionet/OperationQueue.h
         include/asionet/Monitor.h
         include/asionet/Wait.h
+        include/asionet/ConstBuffer.h
         include/asionet/OverrideOperation.h)
 
 foreach(HEADER ${PUBLIC_HEADER_FILES})

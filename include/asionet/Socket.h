@@ -27,6 +27,7 @@
 #include "Stream.h"
 #include "Resolver.h"
 #include "Frame.h"
+#include "ConstBuffer.h"
 
 namespace asionet
 {
@@ -36,17 +37,15 @@ namespace socket
 namespace internal
 {
 
-inline bool stringFromBuffer(std::string & data, std::vector<char> & buffer, std::size_t numBytesTransferred)
+inline bool numDataBytesFromBuffer(const std::vector<char> & buffer, std::size_t numBytesTransferred, std::size_t & numDataBytes)
 {
     if (numBytesTransferred < 4)
         return false;
 
-    auto numDataBytes = utils::fromBigEndian<4, std::uint32_t>((const std::uint8_t *) buffer.data());
+    numDataBytes = utils::fromBigEndian<4, std::uint32_t>((const std::uint8_t *) buffer.data());
     if (numBytesTransferred < 4 + numDataBytes)
         return false;
 
-    data = std::string{buffer.begin() + 4,
-                       buffer.begin() + 4 + numDataBytes};
     return true;
 }
 
@@ -57,7 +56,7 @@ using ConnectHandler = std::function<void(const error::Error & error)>;
 using SendHandler = std::function<void(const error::Error & error)>;
 
 using ReceiveHandler = std::function<void(const error::Error & error,
-                                          std::string & data,
+                                          const asionet::internal::ConstVectorBuffer & buffer,
                                           const boost::asio::ip::udp::endpoint & endpoint)>;
 
 template<typename SocketService>
@@ -174,6 +173,8 @@ void asyncReceiveFrom(DatagramSocket & socket,
                       const time::Duration & timeout,
                       ReceiveHandler handler)
 {
+    using asionet::internal::Frame;
+    using asionet::internal::ConstVectorBuffer;
     using namespace boost::asio::ip;
     auto senderEndpoint = std::make_shared<udp::endpoint>();
 
@@ -187,21 +188,20 @@ void asyncReceiveFrom(DatagramSocket & socket,
         asyncOperation, socket, timeout,
         [&buffer, handler = std::move(handler), senderEndpoint = std::move(senderEndpoint)](const auto & error, auto numBytesTransferred)
         {
-            std::string receiveData{};
-
             if (error)
             {
-                handler(error, receiveData, *senderEndpoint);
+                handler(error, ConstVectorBuffer{buffer, 0, 0}, *senderEndpoint);
                 return;
             }
 
-            if (!internal::stringFromBuffer(receiveData, buffer, numBytesTransferred))
+            std::size_t numDataBytes{0};
+            if (!internal::numDataBytesFromBuffer(buffer, numBytesTransferred, numDataBytes))
             {
-                handler(error::invalidFrame, receiveData, *senderEndpoint);
+                handler(error::invalidFrame, ConstVectorBuffer{buffer, 0, 0}, *senderEndpoint);
                 return;
             }
 
-            handler(error, receiveData, *senderEndpoint);
+            handler(error, ConstVectorBuffer{buffer, numDataBytes, Frame::HEADER_SIZE}, *senderEndpoint);
         },
         boost::asio::buffer(buffer),
         senderEndpointRef);
