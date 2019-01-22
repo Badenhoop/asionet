@@ -146,7 +146,7 @@ Since it's a template argument, a ConstBuffer is not an actual class but instead
 This interface provides four methods:
 
 - a **size()** function, returning the number of bytes in the buffer
-- a **[]-operator** returning a char by index
+- a **[]-operator** returning a data byte as a char by index
 - a **begin()** function to get an iterator to the beginning of the buffer
 - a **end()** function to get an iterator to the end of the buffer
 
