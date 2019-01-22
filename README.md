@@ -116,7 +116,7 @@ Here we have to create a template specialization of the asionet::message::Encode
 The call operator takes a PlayerState reference as input and expects the data reference to be assigned to the byte string that should be transmitted over the network.
 
 Since we can now send PlayerState objects, we cover the server side next.
-Therefore, we have to specialize the asionet::message::Decoder<PlayerState> struct to retrieve the PlayerState object from a received string of bytes.
+Therefore, we have to specialize the asionet::message::Decoder<PlayerState> struct to retrieve the PlayerState object from a buffer object.
 
 ```cpp
 namespace asionet { namespace message {
@@ -124,9 +124,10 @@ namespace asionet { namespace message {
 template<>
 struct Decoder<PlayerState>
 {
-    std::shared_ptr<PlayerState> operator()(const std::string & data) const
+    template<typename ConstBuffer>
+    std::shared_ptr<PlayerState> operator()(const ConstBuffer & buffer) const
     {
-         auto j = nlohmann::json::parse(data);
+         auto j = nlohmann::json::parse(buffer.begin(), buffer.end());
          return std::make_shared<PlayerState>(
              j.at("name").get<std::string>(),
              j.at("xPos").get<float>(),
@@ -139,7 +140,18 @@ struct Decoder<PlayerState>
 }}
 ```
 
-Note that we have to return a std::shared_ptr<PlayerState> in this case.
+Note that we have to define the call operator which takes a template argument and returns a shared_ptr of a PlayerState.
+So what exactly is a ConstBuffer?
+Since it's a template argument, a ConstBuffer is not an actual class but instead represents an abstract buffer interface.
+This interface provides four methods:
+
+- a **size()** function, returning the number of bytes in the buffer
+- a **[]-operator** returning a char by index
+- a **begin()** function to get an iterator to the beginning of the buffer
+- a **end()** function to get an iterator to the end of the buffer
+
+By using this abstraction, asionet may internally use the most suitable buffer representation for a specific operation.
+
 Finally, we can set up the UDP receiver as follows:
 
  ```cpp
