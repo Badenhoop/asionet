@@ -109,7 +109,7 @@ template<>
 struct Decoder<protocol::TestMessage>
 {
     template<typename ConstBuffer>
-    std::shared_ptr<protocol::TestMessage> operator()(const ConstBuffer & buffer) const
+    void operator()(const ConstBuffer & buffer, protocol::TestMessage & message) const
     {
         using namespace protocol;
 
@@ -129,7 +129,7 @@ struct Decoder<protocol::TestMessage>
         value += ((Value) buffer[7]) << 16;
         value += ((Value) buffer[8]) << 24;
 
-        return std::make_shared<TestMessage>(id, messageType, value);
+        message = TestMessage{id, messageType, value};
     }
 };
 

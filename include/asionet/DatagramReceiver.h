@@ -43,7 +43,7 @@ public:
 	using Frame = asionet::internal::Frame;
 	using ReceiveHandler = std::function<
 		void(const error::Error & error,
-			 const std::shared_ptr<Message> & message,
+			 Message & message,
 			 const Endpoint & senderEndpoint)>;
 
 	DatagramReceiver(asionet::Context & context, std::uint16_t bindingPort, std::size_t maxMessageSize = 512)
@@ -94,7 +94,7 @@ private:
 
 		message::asyncReceiveDatagram<Message>(
 			socket, buffer, timeout,
-			[state = std::move(state)] (const auto & error, const auto & message, const auto & senderEndpoint)
+			[state = std::move(state)] (const auto & error, auto & message, const auto & senderEndpoint)
 			{
 				state->finishedNotifier.notify();
 				state->handler(error, message, senderEndpoint);

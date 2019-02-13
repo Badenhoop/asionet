@@ -46,7 +46,7 @@ public:
 	using Frame = asionet::internal::Frame;
 	using Endpoint = Protocol::endpoint;
 	using RequestReceivedHandler = std::function<void(const Endpoint & clientEndpoint,
-	                                                  const std::shared_ptr<RequestMessage> & requestMessage,
+	                                                  RequestMessage & requestMessage,
 	                                                  ResponseMessage & response)>;
 
 	ServiceServer(asionet::Context & context,
@@ -165,7 +165,7 @@ private:
 
 		asionet::message::asyncReceive<RequestMessage>(
 			socketRef, bufferRef, receiveTimeoutRef,
-			[this, serviceState = std::move(serviceState)](const auto & errorCode, const auto & request)
+			[this, serviceState = std::move(serviceState)](const auto & errorCode, auto & request)
 			{
 				// If a receive has timed out we treat it like we've never
 				// received any message (and therefor we do not call the handler).

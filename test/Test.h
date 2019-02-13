@@ -68,8 +68,8 @@ template<>
 struct Decoder<asionet::test::NonCopyableMessage>
 {
     template<typename ConstBuffer>
-    std::shared_ptr<asionet::test::NonCopyableMessage> operator()(const ConstBuffer & buffer) const
-    { return std::make_shared<asionet::test::NonCopyableMessage>(); }
+    void operator()(const ConstBuffer & buffer, asionet::test::NonCopyableMessage & message) const
+    {}
 };
 
 }

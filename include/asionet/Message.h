@@ -41,14 +41,14 @@ namespace message
 using SendHandler = std::function<void(const error::Error & code)>;
 
 template<typename Message>
-using ReceiveHandler = std::function<void(const error::Error & code, std::shared_ptr<Message> & message)>;
+using ReceiveHandler = std::function<void(const error::Error & code, Message & message)>;
 
 using SendToHandler = std::function<void(const error::Error & code)>;
 
 template<typename Message>
 using ReceiveFromHandler = std::function<
 	void(const error::Error & code,
-	     std::shared_ptr<Message> & message,
+	     Message & message,
 	     const boost::asio::ip::udp::endpoint & endpoint)>;
 
 template<typename Message>
@@ -68,8 +68,8 @@ template<>
 struct Decoder<std::string>
 {
 	template<typename ConstBuffer>
-	std::shared_ptr<std::string> operator()(const ConstBuffer & buffer) const
-	{ return std::make_shared<std::string>(buffer.begin(), buffer.end()); }
+	void operator()(const ConstBuffer & buffer, std::string & message) const
+	{ message = std::string{buffer.begin(), buffer.end()}; }
 };
 
 namespace internal
@@ -90,11 +90,11 @@ bool encode(const Message & message, std::string & data)
 }
 
 template<typename Message, typename ConstBuffer>
-bool decode(const ConstBuffer & buffer, std::shared_ptr<Message> & message)
+bool decode(const ConstBuffer & buffer, Message & message)
 {
 	try
 	{
-		message = Decoder<Message>{}(buffer);
+		Decoder<Message>{}(buffer, message);
 		return true;
 	}
 	catch (...)
@@ -139,7 +139,7 @@ void asyncReceive(SyncReadStream & stream,
 		stream, buffer, timeout,
 		[handler = std::move(handler)](const auto & errorCode, const auto & constBuffer)
 		{
-			std::shared_ptr<Message> message;
+			Message message;
 			if (!internal::decode(constBuffer, message))
 			{
 				handler(error::decoding, message);
@@ -196,7 +196,7 @@ void asyncReceiveDatagram(DatagramSocket & socket,
 		socket, buffer, timeout,
 		[handler = std::move(handler)](const auto & error, const auto & constBuffer, const auto & senderEndpoint)
 		{
-			std::shared_ptr<Message> message;
+			Message message;
 			if (!internal::decode(constBuffer, message))
 			{
 				handler(error::decoding, message, senderEndpoint);

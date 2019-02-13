@@ -42,8 +42,7 @@ class ServiceClient
 public:
 	using RequestMessage = typename Service::RequestMessage;
 	using ResponseMessage = typename Service::ResponseMessage;
-	using CallHandler = std::function<void(const error::Error & error,
-										   const std::shared_ptr<ResponseMessage> & response)>;
+	using CallHandler = std::function<void(const error::Error & error, ResponseMessage & response)>;
 	using Protocol = boost::asio::ip::tcp;
 	using EndpointIterator = Protocol::resolver::iterator;
 	using Socket = Protocol::socket;
@@ -168,7 +167,7 @@ private:
 	{
 		if (error)
 		{
-			std::shared_ptr<ResponseMessage> noResponse;
+			ResponseMessage noResponse;
 			state->finishedNotifier.notify();
 			state->handler(error, noResponse);
 			return;
@@ -190,7 +189,7 @@ private:
 	{
 		if (error)
 		{
-			std::shared_ptr<ResponseMessage> noResponse;
+			ResponseMessage noResponse;
 			state->finishedNotifier.notify();
 			state->handler(error, noResponse);
 			return;
@@ -204,7 +203,7 @@ private:
 		// Receive the response.
 		asionet::message::asyncReceive<ResponseMessage>(
 			socket, bufferRef, timeoutRef,
-			[this, state = std::move(state)](auto const & error, const auto & response)
+			[this, state = std::move(state)](auto const & error, auto & response)
 			{
 				state->finishedNotifier.notify();
 				state->handler(error, response);
@@ -227,7 +226,7 @@ private:
 			context.post(
 				[handler]
 				{
-					std::shared_ptr<ResponseMessage> noResponse;
+					ResponseMessage noResponse;
 					handler(error::encoding, noResponse);
 				});
 			return nullptr;

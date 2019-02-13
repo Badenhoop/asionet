@@ -95,11 +95,11 @@ struct BasicService : std::enable_shared_from_this<BasicService>
             Waitable waitable{waiter};
             client.asyncCall(
                 TestMessage::request(2), "127.0.0.1", 10001, 1s,
-                waitable([&, self](const auto & error, const auto & response)
+                waitable([&, self](const auto & error, auto & response)
                          {
                              EXPECT_FALSE(error);
-                             EXPECT_EQ(response->getId(), 1);
-                             EXPECT_EQ(response->getValue(), 42);
+                             EXPECT_EQ(response.getId(), 1);
+                             EXPECT_EQ(response.getValue(), 42);
                              correct++;
                          }));
             waiter.await(waitable);
@@ -187,10 +187,10 @@ struct MultipleCalls : std::enable_shared_from_this<MultipleCalls>
             { responseMessage = TestMessage::response(2, 43); });
 
         client.asyncCall(TestMessage::request(1), "127.0.0.1", 10001, 5s,
-                         waitable1([&, self] (const auto & error, const auto & response) { response1 = *response; }));
+                         waitable1([&, self] (const auto & error, const auto & response) { response1 = response; }));
 
         client.asyncCall(TestMessage::request(2), "127.0.0.1", 10002, 5s,
-                         waitable2([&, self] (const auto & error, const auto & response) { response2 = *response; }));
+                         waitable2([&, self] (const auto & error, const auto & response) { response2 = response; }));
 
         waiter.await(waitable1 && waitable2);
 
@@ -223,13 +223,13 @@ struct StoppingServer : std::enable_shared_from_this<StoppingServer>
         auto self = shared_from_this();
 
         auto handler = [self](const auto & clientEndpoint, const auto & requestMessage, auto & responseMessage)
-        { responseMessage = TestMessage::response(requestMessage->getId(), 1); };
+        { responseMessage = TestMessage::response(requestMessage.getId(), 1); };
 
         server.advertiseService(handler);
 
         TestMessage response{};
         Waitable waitable{waiter};
-        auto callHandler = waitable([&, self](const auto & error, const auto & resp) { response = *resp; });
+        auto callHandler = waitable([&, self](const auto & error, const auto & resp) { response = resp; });
 
         client.asyncCall(TestMessage::request(42), "127.0.0.1", 10001, 1s, callHandler);
         waiter.await(waitable);
@@ -273,7 +273,7 @@ struct BasicDatagram : std::enable_shared_from_this<BasicDatagram>
             waitable([self](const auto & error, auto & message, const auto & senderEndpoint)
                      {
                          EXPECT_FALSE(error);
-                         EXPECT_EQ(message->getId(), 42);
+                         EXPECT_EQ(message.getId(), 42);
                      }));
         sender.asyncSend(TestMessage::request(42), "127.0.0.1", 10000, 1s, [self](const auto & error) { EXPECT_FALSE(error); });
         waiter.await(waitable);
@@ -353,7 +353,7 @@ struct QueuedDatagramSending : std::enable_shared_from_this<QueuedDatagramSendin
 			[&, self](const auto & error, auto & message, const auto & senderEndpoint)
 			{
 				EXPECT_FALSE(error);
-				auto i = message->getValue();
+				auto i = message.getValue();
 				EXPECT_EQ(i, receivedMessages); // correct order
 				receivedMessages++;
 				if (receivedMessages == sentMessages)
@@ -429,7 +429,7 @@ struct StringDatagram : std::enable_shared_from_this<StringDatagram>
 			1s, waitable([&, self](const auto & error, auto & message, const auto & senderEndpoint)
 			             {
 				             EXPECT_FALSE(error);
-				             EXPECT_EQ(*message, "Hello World!");
+				             EXPECT_EQ(message, "Hello World!");
 			             }));
 		sender.asyncSend("Hello World!", "127.0.0.1", 10000, 1s, [self] (const auto & error) { EXPECT_FALSE(error); });
 		waiter.await(waitable);
@@ -460,14 +460,14 @@ struct StringOverService : std::enable_shared_from_this<StringOverService>
 		server.advertiseService(
 			[&, self](const auto & endpoint, const auto & request, auto & response)
 			{
-				EXPECT_EQ(*request, "Ping");
+				EXPECT_EQ(request, "Ping");
 				response = std::string{"Pong"};
 			});
 		client.asyncCall("Ping", "127.0.0.1", 10000, 1s,
 		                 waitable([&, self](const auto & error, const auto & resp)
 		                          {
 			                          EXPECT_FALSE(error);
-			                          EXPECT_EQ(*resp, "Pong");
+			                          EXPECT_EQ(resp, "Pong");
 		                          }));
 		waiter.await(waitable);
 	}
@@ -599,7 +599,7 @@ struct LargeTransferSize : std::enable_shared_from_this<LargeTransferSize>
 		server.advertiseService(
 			[&, self](const auto & endpoint, const auto & request, auto & response)
 			{
-				EXPECT_EQ(*request, data);
+				EXPECT_EQ(request, data);
 				response = data;
 			});
 		Waitable waitable{waiter};
@@ -608,7 +608,7 @@ struct LargeTransferSize : std::enable_shared_from_this<LargeTransferSize>
 			waitable([&, self](const auto & error, const auto & response)
 			         {
 				         EXPECT_FALSE(error);
-				         EXPECT_EQ(*response, data);
+				         EXPECT_EQ(response, data);
 			         }));
 		waiter.await(waitable);
 	}
