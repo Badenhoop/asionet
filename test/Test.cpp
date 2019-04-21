@@ -60,12 +60,16 @@ void runTest1(std::size_t numWorkers = 1, std::size_t iterations = 1, asionet::t
 }
 
 template<typename Test>
-void runTest2()
+void runTest2(std::size_t iterations = 1, asionet::time::Duration pause = 0s)
 {
-    asionet::Context context1, context2;
-    Worker worker1{context1}, worker2{context2};
-    auto test = std::make_shared<Test>(context1, context2);
-    test->run();
+	for (std::size_t i = 0; i < iterations; ++i)
+	{
+	    asionet::Context context1, context2;
+	    Worker worker1{context1}, worker2{context2};
+	    auto test = std::make_shared<Test>(context1, context2);
+	    test->run();
+		std::this_thread::sleep_for(pause);
+	}
 }
 
 struct BasicService : std::enable_shared_from_this<BasicService>
@@ -131,7 +135,7 @@ struct ClientTimeout : std::enable_shared_from_this<ClientTimeout>
         auto self = shared_from_this();
 
         const auto timeout = 10ms;
-	    const auto serviceDuration = 11ms;
+	    const auto serviceDuration = 15ms;
 
         server.advertiseService(
             [&, self](const auto & clientEndpoint, const auto & requestMessage, auto & responseMessage)
