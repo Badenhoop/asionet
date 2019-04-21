@@ -16,7 +16,7 @@ namespace internal
 class ConstStreamBuffer
 {
 public:
-	using ConstIterator = const boost::asio::buffers_iterator<boost::asio::streambuf::const_buffers_type>;
+	using ConstIterator = boost::asio::buffers_iterator<boost::asio::streambuf::const_buffers_type>;
 
 	ConstStreamBuffer(boost::asio::streambuf & buffer, std::size_t numBytes, std::size_t offset)
 		: buffer(buffer), numBytes(numBytes), offset(offset)

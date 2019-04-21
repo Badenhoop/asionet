@@ -111,11 +111,10 @@ void asyncSend(SyncWriteStream & stream,
                const time::Duration & timeout,
                SendHandler handler = [] (auto && ...) {})
 {
-	auto & context = stream.get_executor().context();
 	auto data = std::make_shared<std::string>();
 	if (!internal::encode(message, *data))
 	{
-		context.post(
+		stream.get_executor().context().post(
 			[handler] { handler(error::encoding); });
 		return;
 	}
@@ -134,7 +133,6 @@ void asyncReceive(SyncReadStream & stream,
                   const time::Duration & timeout,
                   ReceiveHandler<Message> handler)
 {
-	auto & context = stream.get_executor().context();
 	asionet::stream::asyncRead(
 		stream, buffer, timeout,
 		[handler = std::move(handler)](const auto & errorCode, const auto & constBuffer)
@@ -168,11 +166,10 @@ void asyncSendDatagram(DatagramSocket & socket,
                        const time::Duration & timeout,
                        SendToHandler handler)
 {
-	auto & context = socket.get_executor().context();
 	auto data = std::make_shared<std::string>();
 	if (!internal::encode(message, *data))
 	{
-		context.post(
+		socket.get_executor().context().post(
 			[handler] { handler(error::encoding); });
 		return;
 	}
@@ -191,7 +188,6 @@ void asyncReceiveDatagram(DatagramSocket & socket,
                           const time::Duration & timeout,
                           ReceiveFromHandler<Message> handler)
 {
-	auto & context = socket.get_executor().context();
 	asionet::socket::asyncReceiveFrom(
 		socket, buffer, timeout,
 		[handler = std::move(handler)](const auto & error, const auto & constBuffer, const auto & senderEndpoint)
