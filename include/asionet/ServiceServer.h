@@ -56,7 +56,7 @@ public:
 		  , bindingPort(bindingPort)
 		  , acceptor(context)
 		  , maxMessageSize(maxMessageSize)
-		  , overrideOperation(context, [this] { this->stopOperation(); })
+		  , operationManager(context, [this] { this->cancelOperation(); })
 	{}
 
 	void advertiseService(RequestReceivedHandler requestReceivedHandler,
@@ -67,13 +67,12 @@ public:
 		{
 			this->advertiseServiceOperation(std::forward<decltype(args)>(args)...);
 		};
-		overrideOperation.dispatch(asyncOperation, requestReceivedHandler, receiveTimeout, sendTimeout);
+		operationManager.dispatch(asyncOperation, requestReceivedHandler, receiveTimeout, sendTimeout);
 	}
 
-	void stop()
+	void cancel()
 	{
-		stopOperation();
-		overrideOperation.cancelPendingOperation();
+		operationManager.cancel();
 	}
 
 private:
@@ -86,13 +85,13 @@ private:
 			: requestReceivedHandler(std::move(requestReceivedHandler))
 			  , receiveTimeout(std::move(receiveTimeout))
 			  , sendTimeout(std::move(sendTimeout))
-			  , finishedNotifier(server.overrideOperation)
+			  , finishedNotifier(server.operationManager)
 		{}
 
 		RequestReceivedHandler requestReceivedHandler;
 		time::Duration receiveTimeout;
 		time::Duration sendTimeout;
-		utils::OverrideOperation::FinishedOperationNotifier finishedNotifier;
+		AsyncOperationManager<PendingOperationReplacer>::FinishedOperationNotifier finishedNotifier;
 	};
 
 	struct ServiceState
@@ -119,7 +118,7 @@ private:
 	Acceptor acceptor;
 	std::size_t maxMessageSize;
 	std::atomic<bool> running{false};
-	utils::OverrideOperation overrideOperation;
+	AsyncOperationManager<PendingOperationReplacer> operationManager;
 
 	void advertiseServiceOperation(RequestReceivedHandler & requestReceivedHandler,
 	                               time::Duration & receiveTimeout,
@@ -149,7 +148,7 @@ private:
 				if (!running)
 					return;
 
-				if (!acceptError)
+				if (!acceptError && !operationManager.isCanceled())
 					this->handleService(serviceState);
 
 				// The next accept event will be put on the event queue.
@@ -188,7 +187,7 @@ private:
 			});
 	}
 
-	void stopOperation()
+	void cancelOperation()
 	{
 		running = false;
 		closeable::Closer<Acceptor>::close(acceptor);

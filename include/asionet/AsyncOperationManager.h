@@ -31,8 +31,6 @@
 
 namespace asionet
 {
-namespace utils
-{
 
 /**
  * Class used to queue async operations.
@@ -43,72 +41,77 @@ namespace utils
  * QueuedExecutor wraps the handler of an async operation such that whenever a running operation finishes, the next queued
  * operation is automatically posted on the given asionet::Context for execution.
  */
-class OperationQueue
+template<typename PendingOperationContainer>
+class AsyncOperationManager
 {
 public:
-	explicit OperationQueue(asionet::Context & context)
-		: context(context)
+	explicit AsyncOperationManager(asionet::Context & context, std::function<void()> cancelOperation)
+		: context(context), cancelOperation(std::move(cancelOperation))
 	{}
 
 	template<typename AsyncOperation, typename ... AsyncOperationArgs>
 	void dispatch(const AsyncOperation & asyncOperation, AsyncOperationArgs && ... asyncOperationArgs)
 	{
-		// It could be absolutely possible that in asyncOperation someone access methods
-		// of this object within the same thread. This is why we need a recursive mutex.
 		std::lock_guard<std::recursive_mutex> lock{mutex};
 
-		// If queue is empty, we can call the wrapped handler directly.
-		// Else we create an operation handler which executes the passed async operation along with its arguments.
-		// This operation is pushed to the queue for later invocation.
-		if (!executing)
+		if (!running)
 		{
-			executing = true;
+			running = true;
 			asyncOperation(std::forward<decltype(asyncOperationArgs)>(asyncOperationArgs)...);
 			return;
 		}
 
-		operationQueue.push(
-			[asyncOperation, asyncOperationArgs...] () mutable
-			{
-				asyncOperation(asyncOperationArgs...);
-			}
-		);
+		if (pendingOperations.shouldCancel())
+			cancelOperation();
+
+		pendingOperations.pushPendingOperation(asyncOperation, asyncOperationArgs...);
 	}
 
-	void notifyFinishedOperation()
+	void finish()
 	{
 		std::lock_guard<std::recursive_mutex> lock{mutex};
-		if (operationQueue.empty())
+
+		canceled = false;
+
+		if (!pendingOperations.hasPendingOperation())
 		{
-			executing = false;
+			running = false;
 			return;
 		}
 
-		context.post(operationQueue.front());
-		operationQueue.pop();
+		auto pendingOperation = pendingOperations.getPendingOperation();
+		pendingOperations.popPendingOperation();
+		pendingOperation();
 	}
 
-	void cancelQueuedOperations()
+	void cancel()
 	{
 		std::lock_guard<std::recursive_mutex> lock{mutex};
-		operationQueue = std::queue<std::function<void()>>{};
+		canceled = true;
+		cancelOperation();
+		pendingOperations.reset();
+	}
+
+	bool isCanceled() const
+	{
+		return canceled;
 	}
 
 	class FinishedOperationNotifier
 	{
 	public:
-		explicit FinishedOperationNotifier(OperationQueue & queue)
-			: queue(queue)
+		explicit FinishedOperationNotifier(AsyncOperationManager<PendingOperationContainer> & operationManager)
+			: operationManager(operationManager)
 		{}
 
 		~FinishedOperationNotifier()
 		{
 			if (enabled)
-				queue.notifyFinishedOperation();
+				operationManager.finish();
 		}
 
 		FinishedOperationNotifier(FinishedOperationNotifier && other) noexcept
-			: queue(other.queue), enabled(other.enabled.load())
+			: operationManager(other.operationManager), enabled(other.enabled.load())
 		{
 			other.enabled = false;
 		}
@@ -122,22 +125,108 @@ public:
 		void notify()
 		{
 			enabled = false;
-			queue.notifyFinishedOperation();
+			operationManager.finish();
 		}
 
 	private:
-		OperationQueue & queue;
+		AsyncOperationManager<PendingOperationContainer> & operationManager;
 		std::atomic<bool> enabled{true};
 	};
 
 private:
 	asionet::Context & context;
 	std::recursive_mutex mutex;
-	std::queue<std::function<void()>> operationQueue;
-	bool executing{false};
+	PendingOperationContainer pendingOperations;
+	std::atomic<bool> running{false};
+	std::atomic<bool> canceled{false};
+	std::function<void()> cancelOperation;
 };
 
-}
+class PendingOperationQueue
+{
+public:
+	bool shouldCancel() const
+	{
+		return false;
+	}
+
+	bool hasPendingOperation() const
+	{
+		return !operations.empty();
+	}
+
+	template<typename AsyncOperation, typename ... AsyncOperationArgs>
+	void pushPendingOperation(const AsyncOperation & asyncOperation, AsyncOperationArgs && ... asyncOperationArgs)
+	{
+		operations.push(
+			[asyncOperation, asyncOperationArgs...] () mutable
+			{
+				asyncOperation(asyncOperationArgs...);
+			}
+		);
+	}
+
+	void popPendingOperation()
+	{
+		operations.pop();
+	}
+
+	std::function<void()> getPendingOperation() const
+	{
+		return operations.front();
+	}
+
+	void reset()
+	{
+		operations = std::queue<std::function<void()>>{};
+	};
+
+private:
+	std::queue<std::function<void()>> operations;
+};
+
+class PendingOperationReplacer
+{
+public:
+	bool shouldCancel() const
+	{
+		return true;
+	}
+
+	bool hasPendingOperation() const
+	{
+		return operation != nullptr;
+	}
+
+	template<typename AsyncOperation, typename ... AsyncOperationArgs>
+	void pushPendingOperation(const AsyncOperation & asyncOperation, AsyncOperationArgs && ... asyncOperationArgs)
+	{
+		operation = std::make_unique<std::function<void()>>(
+			[asyncOperation, asyncOperationArgs...]() mutable
+			{
+				asyncOperation(asyncOperationArgs...);
+			});
+	}
+
+	void popPendingOperation()
+	{
+		operation = nullptr;
+	}
+
+	std::function<void()> getPendingOperation() const
+	{
+		return *operation;
+	}
+
+	void reset()
+	{
+		operation = nullptr;
+	}
+
+private:
+	std::unique_ptr<std::function<void()>> operation = nullptr;
+};
+
 }
 
 #endif //ASIONET_QUEUEDEXECUTER_H

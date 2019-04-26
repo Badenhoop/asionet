@@ -115,7 +115,7 @@ void timedAsyncOperation(AsyncOperation asyncOperation,
 		(*serializer)(
 			[&, timer, serializer, handler](const boost::system::error_code & boostCode, auto && ... remainingHandlerArgs)
 			{
-				timer->stop();
+				timer->cancel();
 
 				auto error = error::success;
 				if (!IsOpen<Closeable>{}(closeable))

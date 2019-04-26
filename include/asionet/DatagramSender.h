@@ -27,7 +27,7 @@
 #include "Stream.h"
 #include "Message.h"
 #include "Utils.h"
-#include "OperationQueue.h"
+#include "AsyncOperationManager.h"
 
 namespace asionet
 {
@@ -44,14 +44,14 @@ public:
 	explicit DatagramSender(asionet::Context & context)
 		: context(context)
 		  , socket(context)
-		  , operationQueue(context)
+		  , operationManager(context, [this] { this->cancelOperation(); })
 	{}
 
 	void asyncSend(const Message & message,
 	               const std::string & ip,
 	               std::uint16_t port,
 	               time::Duration timeout,
-	               SendHandler handler = [](auto && ...) {})
+	               SendHandler handler)
 	{
 		asyncSend(message, Endpoint{boost::asio::ip::address::from_string(ip), port}, timeout, handler);
 	}
@@ -59,7 +59,7 @@ public:
 	void asyncSend(const Message & message,
 	               Endpoint endpoint,
 				   time::Duration timeout,
-				   SendHandler handler = [](auto && ...) {})
+				   SendHandler handler)
 	{
 		auto data = std::make_shared<std::string>();
 		if (!message::internal::encode(message, *data))
@@ -71,19 +71,18 @@ public:
 
 		auto asyncOperation = [this](auto && ... args)
 		{ this->asyncSendOperation(std::forward<decltype(args)>(args)...); };
-		operationQueue.dispatch(asyncOperation, data, endpoint, timeout, handler);
+		operationManager.dispatch(asyncOperation, data, endpoint, timeout, handler);
 	}
 
-	void stop()
+	void cancel()
 	{
-		closeable::Closer<Socket>::close(socket);
-		operationQueue.cancelQueuedOperations();
+		operationManager.cancel();
 	}
 
 private:
 	asionet::Context & context;
 	Socket socket;
-	utils::OperationQueue operationQueue;
+	AsyncOperationManager<PendingOperationQueue> operationManager;
 
 	struct AsyncState
 	{
@@ -92,13 +91,18 @@ private:
 		           SendHandler && handler)
 			: data(std::move(data))
 			  , handler(std::move(handler))
-			  , finishedNotifier(sender.operationQueue)
+			  , finishedNotifier(sender.operationManager)
 		{}
 
 		std::shared_ptr<std::string> data;
 		SendHandler handler;
-		utils::OperationQueue::FinishedOperationNotifier finishedNotifier;
+		AsyncOperationManager<PendingOperationQueue>::FinishedOperationNotifier finishedNotifier;
 	};
+
+	void cancelOperation()
+	{
+		closeable::Closer<Socket>::close(socket);
+	}
 
 	void asyncSendOperation(std::shared_ptr<std::string> & data,
 	                        Endpoint & endpoint,

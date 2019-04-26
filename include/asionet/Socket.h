@@ -132,7 +132,7 @@ void asyncSendTo(DatagramSocket & socket,
                  const std::string & ip,
                  std::uint16_t port,
                  const time::Duration & timeout,
-                 SendHandler handler = [] (auto && ...) {})
+                 SendHandler handler)
 {
     using Endpoint = boost::asio::ip::udp::endpoint;
     asyncSendTo(socket, sendData, Endpoint{boost::asio::ip::address::from_string(ip), port}, timeout, handler);
@@ -143,7 +143,7 @@ void asyncSendTo(DatagramSocket & socket,
                  const std::string & sendData,
                  const Endpoint & endpoint,
                  const time::Duration & timeout,
-                 SendHandler handler = [] (auto && ...) {})
+                 SendHandler handler)
 {
     using namespace asionet::internal;
     auto frame = std::make_shared<Frame>((const std::uint8_t *) sendData.c_str(), sendData.size());

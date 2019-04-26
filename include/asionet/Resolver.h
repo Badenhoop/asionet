@@ -29,7 +29,7 @@
 #include "Error.h"
 #include "Utils.h"
 #include "Context.h"
-#include "OperationQueue.h"
+#include "AsyncOperationManager.h"
 
 namespace asionet
 {
@@ -89,7 +89,7 @@ public:
     explicit Resolver(asionet::Context & context)
         : context(context)
           , resolver(context)
-          , operationQueue(context)
+          , operationManager(context, [this] { this->cancelOperation(); })
     {}
 
     void asyncResolve(const std::string & host,
@@ -99,30 +99,29 @@ public:
     {
         auto asyncOperation = [this](auto && ... args)
         { this->asyncResolveOperation(std::forward<decltype(args)>(args)...); };
-	    operationQueue.dispatch(asyncOperation, host, service, timeout, handler);
+	    operationManager.dispatch(asyncOperation, host, service, timeout, handler);
     }
 
     void stop()
     {
-        closeable::Closer<UnderlyingResolver>::close(resolver);
-        operationQueue.cancelQueuedOperations();
+        operationManager.cancel();
     }
 
 private:
     asionet::Context & context;
     UnderlyingResolver resolver;
-    utils::OperationQueue operationQueue;
+    AsyncOperationManager<PendingOperationQueue> operationManager;
 
     struct AsyncState
     {
         AsyncState(Resolver & resolver,
                    const ResolveHandler & handler)
             : handler(handler)
-              , finishedNotifier(resolver.operationQueue)
+              , finishedNotifier(resolver.operationManager)
         {}
 
         ResolveHandler handler;
-        utils::OperationQueue::FinishedOperationNotifier finishedNotifier;
+	    AsyncOperationManager<PendingOperationQueue>::FinishedOperationNotifier finishedNotifier;
     };
 
     void asyncResolveOperation(const std::string & host,
@@ -149,6 +148,11 @@ private:
                 state->handler(error, endpointIterator);
             },
             query);
+    }
+
+    void cancelOperation()
+    {
+	    closeable::Closer<UnderlyingResolver>::close(resolver);
     }
 };
 

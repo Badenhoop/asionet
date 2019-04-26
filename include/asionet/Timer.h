@@ -28,7 +28,7 @@
 #include <boost/asio/steady_timer.hpp>
 #include "Time.h"
 #include "Context.h"
-#include "OverrideOperation.h"
+#include "AsyncOperationManager.h"
 
 namespace asionet
 {
@@ -41,27 +41,26 @@ public:
 	// Objects of this class should always be declared as std::shared_ptr.
 	explicit Timer(asionet::Context & context)
 		: timer(context)
-		  , overrideOperation(context, [this] { this->stopOperation(); })
+		  , operationManager(context, [this] { this->cancelOperation(); })
 	{}
 
 	void startTimeout(time::Duration duration, TimeoutHandler handler)
 	{
 		auto asyncOperation = [this](auto && ... args)
 		{ this->startTimeoutOperation(std::forward<decltype(args)>(args)...); };
-		overrideOperation.dispatch(asyncOperation, duration, handler);
+		operationManager.dispatch(asyncOperation, duration, handler);
 	}
 
 	void startPeriodicTimeout(time::Duration interval, TimeoutHandler handler)
 	{
 		auto asyncOperation = [this](auto && ... args)
 		{ this->startPeriodicTimeoutOperation(std::forward<decltype(args)>(args)...); };
-		overrideOperation.dispatch(asyncOperation, interval, handler);
+		operationManager.dispatch(asyncOperation, interval, handler);
 	}
 
-	void stop()
+	void cancel()
 	{
-		stopOperation();
-		overrideOperation.cancelPendingOperation();
+		operationManager.cancel();
 	}
 
 private:
@@ -70,29 +69,26 @@ private:
 		AsyncState(Timer & timer, TimeoutHandler && handler, time::Duration && duration)
 			: handler(std::move(handler))
 			  , duration(std::move(duration))
-			  , notifier(timer.overrideOperation)
+			  , notifier(timer.operationManager)
 		{}
 
 		TimeoutHandler handler;
 		time::Duration duration;
-		utils::OverrideOperation::FinishedOperationNotifier notifier;
+		AsyncOperationManager<PendingOperationReplacer>::FinishedOperationNotifier notifier;
 	};
 
 	boost::asio::basic_waitable_timer<time::Clock> timer;
-	std::atomic<bool> enabled{true};
-	utils::OverrideOperation overrideOperation;
+	AsyncOperationManager<PendingOperationReplacer> operationManager;
 
 	void startTimeoutOperation(time::Duration & duration, TimeoutHandler & handler)
 	{
-		enabled = true;
-
 		auto state = std::make_shared<AsyncState>(*this, std::move(handler), std::move(duration));
 
 		timer.expires_from_now(state->duration);
 		timer.async_wait(
 			[this, state = std::move(state)](const boost::system::error_code & error) mutable
 			{
-				if (error || !enabled)
+				if (error || operationManager.isCanceled())
 					return;
 
 				state->notifier.notify();
@@ -102,15 +98,13 @@ private:
 
 	void startPeriodicTimeoutOperation(time::Duration & interval, TimeoutHandler & handler)
 	{
-		enabled = true;
-
 		auto state = std::make_shared<AsyncState>(*this, std::move(handler), std::move(interval));
 
 		timer.expires_from_now(state->duration);
 		timer.async_wait(
 			[this, state = std::move(state)](const boost::system::error_code & error) mutable
 			{
-				if (error || !enabled)
+				if (error || operationManager.isCanceled())
 					return;
 
 				state->handler();
@@ -118,23 +112,22 @@ private:
 			});
 	}
 
-	void stopOperation()
+	void cancelOperation()
 	{
-		enabled = false;
 		boost::system::error_code ignoredError;
 		timer.cancel(ignoredError);
 	}
 
 	void nextPeriod(std::shared_ptr<AsyncState> & state)
 	{
-		if (!enabled)
+		if (operationManager.isCanceled())
 			return;
 
 		timer.expires_at(timer.expires_at() + state->duration);
 		timer.async_wait(
 			[this, state = std::move(state)](const boost::system::error_code & error) mutable
 			{
-				if (error || !enabled)
+				if (error || operationManager.isCanceled())
 					return;
 
 				state->handler();

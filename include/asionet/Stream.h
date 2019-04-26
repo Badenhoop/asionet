@@ -58,7 +58,7 @@ template<typename SyncWriteStream>
 void asyncWrite(SyncWriteStream & stream,
                 const std::string & writeData,
                 const time::Duration & timeout,
-                WriteHandler handler = [] (auto && ...) {})
+                WriteHandler handler)
 {
     using namespace asionet::internal;
     auto frame = std::make_shared<Frame>((const std::uint8_t *) writeData.c_str(), writeData.size());

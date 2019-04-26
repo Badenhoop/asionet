@@ -28,7 +28,7 @@
 #include "Socket.h"
 #include "Message.h"
 #include "Context.h"
-#include "OverrideOperation.h"
+#include "AsyncOperationManager.h"
 
 namespace asionet
 {
@@ -51,20 +51,19 @@ public:
 		  , bindingPort(bindingPort)
 		  , socket(context)
 		  , buffer(maxMessageSize + Frame::HEADER_SIZE)
-		  , overrideOperation(context, [this]{ this->stopOperation(); })
+		  , operationManager(context, [this]{ this->cancelOperation(); })
 	{}
 
 	void asyncReceive(time::Duration timeout, ReceiveHandler handler)
 	{
 		auto asyncOperation = [this](auto && ... args)
 		{ this->asyncReceiveOperation(std::forward<decltype(args)>(args)...); };
-		overrideOperation.dispatch(asyncOperation, timeout, handler);
+		operationManager.dispatch(asyncOperation, timeout, handler);
 	}
 
-	void stop()
+	void cancel()
 	{
-		stopOperation();
-		overrideOperation.cancelPendingOperation();
+		operationManager.cancel();
 	}
 
 private:
@@ -72,18 +71,18 @@ private:
 	std::uint16_t bindingPort;
 	Socket socket;
 	std::vector<char> buffer;
-	utils::OverrideOperation overrideOperation;
+	AsyncOperationManager<PendingOperationReplacer> operationManager;
 
 	struct AsyncState
 	{
 		AsyncState(DatagramReceiver<Message> & receiver,
 		           ReceiveHandler && handler)
 			: handler(std::move(handler))
-			  , finishedNotifier(receiver.overrideOperation)
+			  , finishedNotifier(receiver.operationManager)
 		{}
 
 		ReceiveHandler handler;
-		utils::OverrideOperation::FinishedOperationNotifier finishedNotifier;
+		AsyncOperationManager<PendingOperationReplacer>::FinishedOperationNotifier finishedNotifier;
 	};
 
 	void asyncReceiveOperation(time::Duration & timeout, ReceiveHandler & handler)
@@ -94,14 +93,17 @@ private:
 
 		message::asyncReceiveDatagram<Message>(
 			socket, buffer, timeout,
-			[state = std::move(state)] (const auto & error, auto & message, const auto & senderEndpoint)
+			[this, state = std::move(state)] (const auto & error, auto & message, const auto & senderEndpoint)
 			{
+				if (operationManager.isCanceled())
+					return;
+
 				state->finishedNotifier.notify();
 				state->handler(error, message, senderEndpoint);
 			});
 	}
 
-	void stopOperation()
+	void cancelOperation()
 	{
 		closeable::Closer<Socket>::close(socket);
 	}

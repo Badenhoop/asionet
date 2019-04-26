@@ -35,8 +35,8 @@ namespace utils
 class OverrideOperation
 {
 public:
-	explicit OverrideOperation(asionet::Context & context, std::function<void()> stopOperation)
-		: context(context), stopOperation(std::move(stopOperation))
+	explicit OverrideOperation(asionet::Context & context, std::function<void()> cancelOperation)
+		: context(context), cancelOperation(std::move(cancelOperation))
 	{}
 
 	template<typename AsyncOperation, typename ... AsyncOperationArgs>
@@ -50,7 +50,7 @@ public:
 			return;
 		}
 
-		stopOperation();
+		cancelOperation();
 		pendingOperation = std::make_unique<std::function<void()>>(
 			[asyncOperation, asyncOperationArgs...]() mutable
 			{
@@ -58,23 +58,32 @@ public:
 			});
 	}
 
-	void notifyFinishedOperation()
+	void notifyFinished()
 	{
 		std::lock_guard<std::recursive_mutex> lock{mutex};
+		canceled = false;
 		if (!pendingOperation)
 		{
 			executing = false;
 			return;
 		}
 
-		context.post(*pendingOperation);
+		auto operation = std::move(pendingOperation);
+		pendingOperation = nullptr;
+		(*operation)();
+	}
+
+	void cancel()
+	{
+		std::lock_guard<std::recursive_mutex> lock{mutex};
+		canceled = true;
+		cancelOperation();
 		pendingOperation = nullptr;
 	}
 
-	void cancelPendingOperation()
+	bool isCanceled() const
 	{
-		std::lock_guard<std::recursive_mutex> lock{mutex};
-		pendingOperation = nullptr;
+		return canceled;
 	}
 
 	class FinishedOperationNotifier
@@ -87,7 +96,7 @@ public:
 		~FinishedOperationNotifier()
 		{
 			if (enabled)
-				operation.notifyFinishedOperation();
+				operation.notifyFinished();
 		}
 
 		FinishedOperationNotifier(FinishedOperationNotifier && other) noexcept
@@ -105,7 +114,7 @@ public:
 		void notify()
 		{
 			enabled = false;
-			operation.notifyFinishedOperation();
+			operation.notifyFinished();
 		}
 
 	private:
@@ -117,8 +126,9 @@ private:
 	asionet::Context & context;
 	std::recursive_mutex mutex;
 	std::unique_ptr<std::function<void()>> pendingOperation = nullptr;
-	bool executing{false};
-	std::function<void()> stopOperation;
+	std::atomic<bool> executing{false};
+	std::atomic<bool> canceled{false};
+	std::function<void()> cancelOperation;
 };
 
 }

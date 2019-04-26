@@ -210,13 +210,13 @@ TEST(asionetTest, MultipleCalls)
 	runTest1<MultipleCalls>();
 }
 
-struct StoppingServer : std::enable_shared_from_this<StoppingServer>
+struct CancelingServer : std::enable_shared_from_this<CancelingServer>
 {
     ServiceServer<TestService> server;
     ServiceClient<TestService> client;
     Waiter waiter;
 
-    StoppingServer(Context & context)
+    CancelingServer(Context & context)
         : server(context, 10001)
           , client(context)
           , waiter(context)
@@ -239,7 +239,7 @@ struct StoppingServer : std::enable_shared_from_this<StoppingServer>
         waiter.await(waitable);
         waitable.setWaiting();
 
-        server.stop();
+	    server.cancel();
 	    std::this_thread::sleep_for(10ms);  // give os some time to release the port
         server.advertiseService(handler);
 
@@ -251,9 +251,9 @@ struct StoppingServer : std::enable_shared_from_this<StoppingServer>
     }
 };
 
-TEST(asionetTest, StoppingServer)
+TEST(asionetTest, CancelingServer)
 {
-    runTest1<StoppingServer>();
+    runTest1<CancelingServer>();
 }
 
 struct BasicDatagram : std::enable_shared_from_this<BasicDatagram>
@@ -313,7 +313,7 @@ struct PeriodicTimeout : std::enable_shared_from_this<PeriodicTimeout>
             {
                 if (run >= runs)
                 {
-                    timer.stop();
+	                timer.cancel();
                     waitable.setReady();
                     return;
                 }
@@ -333,13 +333,51 @@ TEST(asionetTest, PeriodicTimeout)
     runTest1<PeriodicTimeout>();
 }
 
+struct TimeoutRestart : std::enable_shared_from_this<TimeoutRestart>
+{
+	Timer timer;
+	asionet::Context & context;
+
+	TimeoutRestart(asionet::Context & context)
+		: timer(context), context(context)
+	{}
+
+	void run()
+	{
+		auto self = shared_from_this();
+
+		std::atomic<std::size_t> count{0};
+
+		context.post([&]{timer.startTimeout(500ms, [&, self]{ count++; });});
+		std::this_thread::sleep_for(1s);
+
+		for (std::size_t i = 0; i < 20*5; ++i)
+		{
+			context.post([&]{timer.startTimeout(500ms, [&, self]{ count++; });});
+			std::this_thread::sleep_for(10us);
+			context.post([&]{timer.startTimeout(500ms, [&, self]{ count++; });});
+			std::this_thread::sleep_for(50ms);
+		}
+
+		context.post([&]{timer.startTimeout(500ms, [&, self]{ count++; });});
+		std::this_thread::sleep_for(2s);
+
+		EXPECT_EQ(count, 2);
+	}
+};
+
+TEST(asionetTest, TimeoutRestart)
+{
+	//runTest1<TimeoutRestart>(1, 10);
+}
+
 struct QueuedDatagramSending : std::enable_shared_from_this<QueuedDatagramSending>
 {
 	DatagramReceiver<TestMessage> receiver;
 	DatagramSender<TestMessage> sender;
 	Waiter waiter;
 
-	QueuedDatagramSending (asionet::Context & context)
+	QueuedDatagramSending(asionet::Context & context)
 		: receiver(context, 10000)
 		 , sender(context)
 		 , waiter(context)

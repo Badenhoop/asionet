@@ -30,7 +30,7 @@ set(SOURCE_FILES
         include/asionet/Worker.h
         include/asionet/WorkerPool.h
         include/asionet/WorkSerializer.h
-        include/asionet/OperationQueue.h
+        include/asionet/AsyncOperationManager.h
         include/asionet/Monitor.h
         include/asionet/Wait.h
         include/asionet/OverrideOperation.h
@@ -56,7 +56,7 @@ set(PUBLIC_HEADER_FILES
         include/asionet/Worker.h
         include/asionet/WorkerPool.h
         include/asionet/WorkSerializer.h
-        include/asionet/OperationQueue.h
+        include/asionet/AsyncOperationManager.h
         include/asionet/Monitor.h
         include/asionet/Wait.h
         include/asionet/ConstBuffer.h

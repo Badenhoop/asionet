@@ -109,7 +109,7 @@ template<typename Message, typename SyncWriteStream>
 void asyncSend(SyncWriteStream & stream,
                const Message & message,
                const time::Duration & timeout,
-               SendHandler handler = [] (auto && ...) {})
+               SendHandler handler)
 {
 	auto data = std::make_shared<std::string>();
 	if (!internal::encode(message, *data))

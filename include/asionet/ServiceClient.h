@@ -31,7 +31,7 @@
 #include "Utils.h"
 #include "Error.h"
 #include "Context.h"
-#include "OperationQueue.h"
+#include "AsyncOperationManager.h"
 
 namespace asionet
 {
@@ -52,7 +52,7 @@ public:
 		: context(context)
 		  , socket(context)
 		  , maxMessageSize(maxMessageSize)
-		  , operationQueue(context)
+		  , operationManager(context, [this] { this->cancelOperation(); })
 	{}
 
 	void asyncCall(const RequestMessage & request,
@@ -67,7 +67,7 @@ public:
 
 		auto asyncOperation = [this](auto && ... args)
 		{ this->asyncCallOperation(std::forward<decltype(args)>(args)...); };
-		operationQueue.dispatch(asyncOperation, sendData, host, port, timeout, handler);
+		operationManager.dispatch(asyncOperation, sendData, host, port, timeout, handler);
 	}
 
 	void asyncCall(const RequestMessage & request,
@@ -81,13 +81,12 @@ public:
 
 		auto asyncOperation = [this](auto && ... args)
 		{ this->asyncCallOperation(std::forward<decltype(args)>(args)...); };
-		operationQueue.dispatch(asyncOperation, sendData, endpointIterator, timeout, handler);
+		operationManager.dispatch(asyncOperation, sendData, endpointIterator, timeout, handler);
 	}
 
-	void stop()
+	void cancel()
 	{
-		closeable::Closer<Socket>::close(socket);
-		operationQueue.cancelQueuedOperations();
+		operationManager.cancel();
 	}
 
 private:
@@ -105,7 +104,7 @@ private:
 			  , startTime(std::move(startTime))
 			  , buffer(client.maxMessageSize + Frame::HEADER_SIZE)
 			  , closer(client.socket)
-			  , finishedNotifier(client.operationQueue)
+			  , finishedNotifier(client.operationManager)
 		{}
 
 		CallHandler handler;
@@ -114,13 +113,13 @@ private:
 		time::TimePoint startTime;
 		boost::asio::streambuf buffer;
 		closeable::Closer<Socket> closer;
-		utils::OperationQueue::FinishedOperationNotifier finishedNotifier;
+		AsyncOperationManager<PendingOperationQueue>::FinishedOperationNotifier finishedNotifier;
 	};
 
 	asionet::Context & context;
 	Socket socket;
 	std::size_t maxMessageSize;
-	utils::OperationQueue operationQueue;
+	AsyncOperationManager<PendingOperationQueue> operationManager;
 
 	void asyncCallOperation(std::shared_ptr<std::string> & sendData,
 		                    std::string & host,
@@ -161,6 +160,11 @@ private:
 			socket, endpointIterator, timeoutRef,
 			[this, state = std::move(state)](const auto & error) mutable
 			{ this->connectHandler(state, error); });
+	}
+
+	void cancelOperation()
+	{
+		closeable::Closer<Socket>::close(socket);
 	}
 
 	void connectHandler(std::shared_ptr<AsyncState> & state, const error::Error & error)
