@@ -103,7 +103,6 @@ private:
 			  , timeout(std::move(timeout))
 			  , startTime(std::move(startTime))
 			  , buffer(client.maxMessageSize + Frame::HEADER_SIZE)
-			  , closer(client.socket)
 			  , finishedNotifier(client.operationManager)
 		{}
 
@@ -112,7 +111,6 @@ private:
 		time::Duration timeout;
 		time::TimePoint startTime;
 		boost::asio::streambuf buffer;
-		closeable::Closer<Socket> closer;
 		AsyncOperationManager<PendingOperationQueue>::FinishedOperationNotifier finishedNotifier;
 	};
 
@@ -172,6 +170,7 @@ private:
 		if (error)
 		{
 			ResponseMessage noResponse;
+			socket.close();
 			state->finishedNotifier.notify();
 			state->handler(error, noResponse);
 			return;
@@ -194,6 +193,7 @@ private:
 		if (error)
 		{
 			ResponseMessage noResponse;
+			socket.close();
 			state->finishedNotifier.notify();
 			state->handler(error, noResponse);
 			return;
@@ -209,6 +209,7 @@ private:
 			socket, bufferRef, timeoutRef,
 			[this, state = std::move(state)](auto const & error, auto & response)
 			{
+				socket.close();
 				state->finishedNotifier.notify();
 				state->handler(error, response);
 			});
@@ -240,8 +241,7 @@ private:
 
 	void newSocket()
 	{
-		if (!socket.is_open())
-			socket = Socket(context);
+		socket = Socket(context);
 	}
 };
 
