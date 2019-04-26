@@ -67,7 +67,7 @@ public:
 
 		auto asyncOperation = [this](auto && ... args)
 		{ this->asyncCallOperation(std::forward<decltype(args)>(args)...); };
-		operationManager.dispatch(asyncOperation, sendData, host, port, timeout, handler);
+		operationManager.startOperation(asyncOperation, sendData, host, port, timeout, handler);
 	}
 
 	void asyncCall(const RequestMessage & request,
@@ -81,12 +81,12 @@ public:
 
 		auto asyncOperation = [this](auto && ... args)
 		{ this->asyncCallOperation(std::forward<decltype(args)>(args)...); };
-		operationManager.dispatch(asyncOperation, sendData, endpointIterator, timeout, handler);
+		operationManager.startOperation(asyncOperation, sendData, endpointIterator, timeout, handler);
 	}
 
 	void cancel()
 	{
-		operationManager.cancel();
+		operationManager.cancelOperation();
 	}
 
 private:

@@ -71,12 +71,12 @@ public:
 
 		auto asyncOperation = [this](auto && ... args)
 		{ this->asyncSendOperation(std::forward<decltype(args)>(args)...); };
-		operationManager.dispatch(asyncOperation, data, endpoint, timeout, handler);
+		operationManager.startOperation(asyncOperation, data, endpoint, timeout, handler);
 	}
 
 	void cancel()
 	{
-		operationManager.cancel();
+		operationManager.cancelOperation();
 	}
 
 private:

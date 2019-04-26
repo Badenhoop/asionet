@@ -99,12 +99,12 @@ public:
     {
         auto asyncOperation = [this](auto && ... args)
         { this->asyncResolveOperation(std::forward<decltype(args)>(args)...); };
-	    operationManager.dispatch(asyncOperation, host, service, timeout, handler);
+	    operationManager.startOperation(asyncOperation, host, service, timeout, handler);
     }
 
     void stop()
     {
-        operationManager.cancel();
+	    operationManager.cancelOperation();
     }
 
 private:

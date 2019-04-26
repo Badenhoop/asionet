@@ -33,24 +33,39 @@ namespace asionet
 {
 
 /**
- * Class used to queue async operations.
- * For example consider the DatagramSender:
- * We must ensure that there NEVER exist more than one send-operations running at the same time.
- * Whenever send() is called and there currently runs another send() operation, we have to queue the incoming send()
- * operation for later execution.
- * QueuedExecutor wraps the handler of an async operation such that whenever a running operation finishes, the next queued
- * operation is automatically posted on the given asionet::Context for execution.
+ * Class used help managing the execution of sequential calls of asynchronous operations.
+ * For example, if the user calls the asyncSend() method of DatagramSender n times in a row, then using this class we can
+ * start the first call directly and store the rest of the n-1 operations for later execution.
+ * More precisely, operation i+1 will be executed directly after operation i has finished its asynchronous execution.
+ *
+ * Sequentializing arbitrary asynchronous operations is done by defining a start and an end of a given operation.
+ * The user must start the asynchronous operation with startOperation() and notify its end using finishOperation().
+ * Any asynchronous operation must be cancelable at any given time. Therefore, a canceling operation must be specfied.
+ * Canceling an asynchronous operation shall be done by calling the cancelOperation() method.
+ *
+ * It is important to know that by calling finishOperation() any the next pending operation is directly executed.
+ * This means at this point, all resources and state should be already prepared for the next operation.
+ *
+ * One may use a FinishOperationNotifier instance which can be passed inside a lambda closure of an asynchronous handler.
+ * If the FinishOperationNotifier is destructed and its notify() method hasn't already been called, it automatically calls
+ * finishOperation() of its assigned AsyncOperationManager instance.
+ *
+ * The PendingOperationContainer template parameter is used to specify the strategy in which pending operations are stored
+ * and retrieved. One may use a PendingOperationQueue which enqueues pending operations or one may choose a
+ * PendingOperationReplacer which allows for only a operation at a time which is replaced with each new operation.
+ * PendingOperationReplacer is used in DatagramReceiver, Timer and ServiceServer.
+ * PendingOperationQueue is used in DatagramSender, ServiceClient and Resolver.
  */
 template<typename PendingOperationContainer>
 class AsyncOperationManager
 {
 public:
-	explicit AsyncOperationManager(asionet::Context & context, std::function<void()> cancelOperation)
-		: context(context), cancelOperation(std::move(cancelOperation))
+	explicit AsyncOperationManager(asionet::Context & context, std::function<void()> cancelingOperation)
+		: context(context), cancelingOperation(std::move(cancelingOperation))
 	{}
 
 	template<typename AsyncOperation, typename ... AsyncOperationArgs>
-	void dispatch(const AsyncOperation & asyncOperation, AsyncOperationArgs && ... asyncOperationArgs)
+	void startOperation(const AsyncOperation & asyncOperation, AsyncOperationArgs && ... asyncOperationArgs)
 	{
 		std::lock_guard<std::recursive_mutex> lock{mutex};
 
@@ -62,12 +77,12 @@ public:
 		}
 
 		if (pendingOperations.shouldCancel())
-			cancelOperation();
+			cancelingOperation();
 
 		pendingOperations.pushPendingOperation(asyncOperation, asyncOperationArgs...);
 	}
 
-	void finish()
+	void finishOperation()
 	{
 		std::lock_guard<std::recursive_mutex> lock{mutex};
 
@@ -84,11 +99,11 @@ public:
 		pendingOperation();
 	}
 
-	void cancel()
+	void cancelOperation()
 	{
 		std::lock_guard<std::recursive_mutex> lock{mutex};
 		canceled = true;
-		cancelOperation();
+		cancelingOperation();
 		pendingOperations.reset();
 	}
 
@@ -107,7 +122,7 @@ public:
 		~FinishedOperationNotifier()
 		{
 			if (enabled)
-				operationManager.finish();
+				operationManager.finishOperation();
 		}
 
 		FinishedOperationNotifier(FinishedOperationNotifier && other) noexcept
@@ -125,7 +140,7 @@ public:
 		void notify()
 		{
 			enabled = false;
-			operationManager.finish();
+			operationManager.finishOperation();
 		}
 
 	private:
@@ -139,7 +154,7 @@ private:
 	PendingOperationContainer pendingOperations;
 	std::atomic<bool> running{false};
 	std::atomic<bool> canceled{false};
-	std::function<void()> cancelOperation;
+	std::function<void()> cancelingOperation;
 };
 
 class PendingOperationQueue

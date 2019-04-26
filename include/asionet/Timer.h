@@ -48,19 +48,19 @@ public:
 	{
 		auto asyncOperation = [this](auto && ... args)
 		{ this->startTimeoutOperation(std::forward<decltype(args)>(args)...); };
-		operationManager.dispatch(asyncOperation, duration, handler);
+		operationManager.startOperation(asyncOperation, duration, handler);
 	}
 
 	void startPeriodicTimeout(time::Duration interval, TimeoutHandler handler)
 	{
 		auto asyncOperation = [this](auto && ... args)
 		{ this->startPeriodicTimeoutOperation(std::forward<decltype(args)>(args)...); };
-		operationManager.dispatch(asyncOperation, interval, handler);
+		operationManager.startOperation(asyncOperation, interval, handler);
 	}
 
 	void cancel()
 	{
-		operationManager.cancel();
+		operationManager.cancelOperation();
 	}
 
 private:

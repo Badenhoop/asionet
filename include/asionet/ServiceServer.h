@@ -67,12 +67,12 @@ public:
 		{
 			this->advertiseServiceOperation(std::forward<decltype(args)>(args)...);
 		};
-		operationManager.dispatch(asyncOperation, requestReceivedHandler, receiveTimeout, sendTimeout);
+		operationManager.startOperation(asyncOperation, requestReceivedHandler, receiveTimeout, sendTimeout);
 	}
 
 	void cancel()
 	{
-		operationManager.cancel();
+		operationManager.cancelOperation();
 	}
 
 private:

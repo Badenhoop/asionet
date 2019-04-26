@@ -333,44 +333,6 @@ TEST(asionetTest, PeriodicTimeout)
     runTest1<PeriodicTimeout>();
 }
 
-struct TimeoutRestart : std::enable_shared_from_this<TimeoutRestart>
-{
-	Timer timer;
-	asionet::Context & context;
-
-	TimeoutRestart(asionet::Context & context)
-		: timer(context), context(context)
-	{}
-
-	void run()
-	{
-		auto self = shared_from_this();
-
-		std::atomic<std::size_t> count{0};
-
-		context.post([&]{timer.startTimeout(500ms, [&, self]{ count++; });});
-		std::this_thread::sleep_for(1s);
-
-		for (std::size_t i = 0; i < 20*5; ++i)
-		{
-			context.post([&]{timer.startTimeout(500ms, [&, self]{ count++; });});
-			std::this_thread::sleep_for(10us);
-			context.post([&]{timer.startTimeout(500ms, [&, self]{ count++; });});
-			std::this_thread::sleep_for(50ms);
-		}
-
-		context.post([&]{timer.startTimeout(500ms, [&, self]{ count++; });});
-		std::this_thread::sleep_for(2s);
-
-		EXPECT_EQ(count, 2);
-	}
-};
-
-TEST(asionetTest, TimeoutRestart)
-{
-	//runTest1<TimeoutRestart>(1, 10);
-}
-
 struct QueuedDatagramSending : std::enable_shared_from_this<QueuedDatagramSending>
 {
 	DatagramReceiver<TestMessage> receiver;
