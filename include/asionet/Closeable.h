@@ -99,7 +99,7 @@ void timedAsyncOperation(AsyncOperation asyncOperation,
                          const Handler & handler,
                          AsyncOperationArgs && ... asyncOperationArgs)
 {
-	auto & context = closeable.get_executor();
+	auto context = closeable.get_executor();
 	auto serializer = std::make_shared<WorkSerializer>(context);
 
 	auto timer = std::make_shared<Timer>(context);
