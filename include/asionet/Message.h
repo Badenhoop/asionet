@@ -114,7 +114,7 @@ void asyncSend(SyncWriteStream & stream,
 	auto data = std::make_shared<std::string>();
 	if (!internal::encode(message, *data))
 	{
-		stream.get_executor().context().post(
+		stream.get_executor().post(
 			[handler] { handler(error::encoding); });
 		return;
 	}
@@ -169,7 +169,7 @@ void asyncSendDatagram(DatagramSocket & socket,
 	auto data = std::make_shared<std::string>();
 	if (!internal::encode(message, *data))
 	{
-		socket.get_executor().context().post(
+		socket.get_executor().post(
 			[handler] { handler(error::encoding); });
 		return;
 	}

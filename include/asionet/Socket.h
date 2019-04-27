@@ -66,7 +66,7 @@ void asyncConnect(SocketService & socket,
                   const time::Duration & timeout,
                   ConnectHandler handler)
 {
-    auto & context = socket.get_executor().context();
+    auto & context = socket.get_executor();
     using namespace asionet::internal;
     using Resolver = CloseableResolver<boost::asio::ip::tcp>;
 
