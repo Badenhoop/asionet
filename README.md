@@ -8,12 +8,6 @@ For example, managing timeouts and sending and receiving serialized messages is 
 ## Prerequisites
 
 In order to use the library, you have to compile with the C++14 standard and make sure to include Boost 1.66 and your system's thread library in your project.
-In your CMakeLists.txt, insert:
-
-    set(CMAKE_CXX_STANDARD 14)
-    find_package(Boost REQUIRED COMPONENTS system regex)
-    find_package(Threads)
-    link_libraries(${Boost_LIBRARIES} ${CMAKE_THREAD_LIBS_INIT})
 
 ## Installation
 
