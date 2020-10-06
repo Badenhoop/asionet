@@ -10,3 +10,5 @@ set(asionet_INCLUDE_DIRS "@CONF_INCLUDE_DIRS@")
 if(NOT TARGET asionet)
     include("${ASIONET_CMAKE_DIR}/asionetTargets.cmake")
 endif()
+
+set(asionet_LIBRARIES asionet)

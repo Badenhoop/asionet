@@ -4,7 +4,7 @@ project(asionet)
 set(CMAKE_CXX_STANDARD 14)
 
 # Packages to find
-find_package(Boost REQUIRED COMPONENTS system regex)
+find_package(Boost REQUIRED COMPONENTS system)
 find_package(Threads)
 
 ###########################
@@ -70,6 +70,9 @@ add_library(asionet STATIC ${SOURCE_FILES})
 set_target_properties(asionet PROPERTIES PUBLIC_HEADER ${PUBLIC_HEADER_FILES_COMBINED})
 target_link_libraries(asionet ${Boost_LIBRARIES} ${CMAKE_THREAD_LIBS_INIT})
 
+set(INCLUDE_DIRS ${Boost_INCLUDE_DIRS})
+include_directories(${INCLUDE_DIRS})
+
 #############################
 # Specify install directories
 #############################
@@ -88,12 +91,23 @@ endforeach()
 ####################################################
 # Create the *Config.cmake and *ConfigVersion files
 ####################################################
+
+# Configure *Config.cmake.in for the build tree
+set(CONF_INCLUDE_DIRS "${PROJECT_SOURCE_DIR}/include" ${INCLUDE_DIRS})
+configure_file(asionetConfig.cmake.in
+        "${PROJECT_BINARY_DIR}/asionetConfig.cmake"
+        @ONLY)
+
+# Add target for the build tree
+export(TARGETS asionet
+        FILE "${PROJECT_BINARY_DIR}/asionetTargets.cmake")
+
 # Get the relative path from the cmake install directory to the include install directory
 file(RELATIVE_PATH REL_INCLUDE_DIR "${INSTALL_CMAKE_DIR}" "${INSTALL_INCLUDE_DIR}")
 
 # Configure *Config.cmake.in for the install tree
 # Put it inside the cmake-files directory (which is located inside the binary directory)
-set(CONF_INCLUDE_DIRS "\${ASIONET_CMAKE_DIR}/${REL_INCLUDE_DIR}/..")
+set(CONF_INCLUDE_DIRS "\${ASIONET_CMAKE_DIR}/${REL_INCLUDE_DIR}/.." ${INCLUDE_DIRS})
 configure_file(asionetConfig.cmake.in
         "${PROJECT_BINARY_DIR}${CMAKE_FILES_DIRECTORY}/asionetConfig.cmake"
         @ONLY)
@@ -128,9 +142,7 @@ set(TEST_SOURCE_FILES
         test/TestService.h
         test/TestUtils.h)
 add_executable(asionetTest ${TEST_SOURCE_FILES})
-
 target_link_libraries(asionetTest ${Boost_LIBRARIES} ${CMAKE_THREAD_LIBS_INIT} gtest gtest_main)
-target_include_directories(asionetTest PUBLIC ${gtest_SOURCE_DIR}/include ${gtest_SOURCE_DIR})
 
 # For debugging
 # target_compile_options(asionetTest PUBLIC -fopenmp -fPIC -O0 -g3 -ggdb)
